@@ -1,0 +1,60 @@
+/* 응시현황표양식0923 재현 — A4 세로 1장 */
+.rs-page {
+  width: 210mm;
+  height: 296mm; /* 297mm면 반올림 오차로 빈 페이지가 끼는 경우가 있음 */
+  padding: 8mm 9mm 6mm;
+  box-sizing: border-box;
+  background: #fff;
+  color: #000;
+  font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+  font-size: 9pt;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.rs-title {
+  text-align: center;
+  font-size: 18pt;
+  font-weight: 700;
+  height: 11mm;
+  line-height: 11mm;
+  margin-bottom: 3mm;
+  white-space: nowrap;
+}
+.rs-title small { font-size: 10pt; font-weight: 400; }
+.rs-body { display: flex; gap: 4mm; align-items: flex-start; }
+.rs-left { flex: 0 0 118mm; }
+.rs-right { flex: 1; }
+.rs-table { border-collapse: collapse; width: 100%; table-layout: fixed; }
+.rs-table th, .rs-table td {
+  border: 0.8pt solid #000;
+  text-align: center;
+  vertical-align: middle;
+  padding: 0 1mm;
+  overflow: hidden;
+}
+.rs-head th { background: #d9ead3; height: 8.5mm; }
+.rs-head td { height: 9mm; white-space: pre-line; line-height: 1.2; }
+.rs-list th { background: #fce5cd; height: 7mm; }
+.rs-list td { height: 4.7mm; line-height: 4.4mm; font-size: 8.8pt; padding-top: 0; padding-bottom: 0; }
+.rs-sum th { background: #cdf2e4; font-weight: 700; height: 8.5mm; }
+.rs-sum th.rs-sub { background: #cdf2e4; }
+.rs-sum td { height: 8.5mm; white-space: pre-line; line-height: 1.25; font-size: 8pt; }
+.rs-sum td.rs-count { font-size: 10pt; }
+.rs-gap { height: 4mm; }
+.rs-footer { margin-top: auto; text-align: right; font-size: 7.5pt; color: #555; }
+
+@media screen {
+  .rs-page { box-shadow: 0 1px 6px rgba(0, 0, 0, 0.25); margin: 0 auto 16px; }
+}
+
+@media print {
+  @page { size: A4 portrait; margin: 0; }
+  html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
+  body > *:not(#print-root) { display: none !important; }
+  #print-root { display: block !important; }
+  .rs-page { break-after: page; page-break-after: always; }
+  .rs-page:last-child { break-after: auto; page-break-after: auto; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+#print-root { display: none; }

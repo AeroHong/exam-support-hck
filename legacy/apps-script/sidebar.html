@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+      font-size: 13px; color: #333;
+      padding: 14px; background: #f8f9fa;
+    }
+    .section {
+      background: #fff; border: 1px solid #e0e0e0;
+      border-radius: 8px; padding: 12px; margin-bottom: 12px;
+    }
+    .section h3 {
+      font-size: 13px; font-weight: bold; color: #555;
+      margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid #eee;
+    }
+    .row {
+      display: flex; gap: 6px; margin-bottom: 6px; align-items: stretch;
+    }
+    .row:last-child { margin-bottom: 0; }
+    .row select, .row input[type="text"] {
+      flex: 1;
+      padding: 7px 9px;
+      border: 1px solid #ccc; border-radius: 5px;
+      font-size: 12px; font-family: inherit;
+      background: #fff;
+    }
+    .row select:focus, .row input:focus {
+      outline: none; border-color: #4CAF50;
+    }
+    .row button {
+      padding: 7px 12px;
+      white-space: nowrap;
+      min-width: 60px;
+    }
+    input[type="text"].full {
+      width: 100%;
+      padding: 7px 10px; margin-bottom: 8px;
+      border: 1px solid #ccc; border-radius: 5px;
+      font-size: 12px; font-family: inherit;
+    }
+    button {
+      border: none; border-radius: 5px;
+      font-size: 12px; font-family: inherit; font-weight: bold;
+      cursor: pointer; transition: opacity 0.15s;
+    }
+    button:hover    { opacity: 0.85; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-full {
+      width: 100%; padding: 9px; margin-bottom: 6px;
+      font-size: 13px;
+    }
+    .btn-green   { background: #4CAF50; color: #fff; }
+    .btn-blue    { background: #2196F3; color: #fff; }
+    .btn-orange  { background: #FF9800; color: #fff; }
+    .btn-purple  { background: #9C27B0; color: #fff; }
+    .btn-teal    { background: #009688; color: #fff; }
+    .btn-gray    { background: #757575; color: #fff; }
+    .status {
+      margin-top: 10px; padding: 10px 12px; border-radius: 6px;
+      font-size: 12px; line-height: 1.7; white-space: pre-wrap;
+      display: none; max-height: 300px; overflow-y: auto;
+    }
+    .status.success { background: #e8f5e9; color: #2e7d32; display: block; }
+    .status.error   { background: #fdecea; color: #c62828; display: block; }
+    .status.loading { background: #e3f2fd; color: #1565c0; display: block; }
+    .status.info    { background: #fff3e0; color: #e65100; display: block; }
+    .label-small {
+      font-size: 11px; color: #666; margin-bottom: 4px; font-weight: 500;
+    }
+    .reload-btn {
+      padding: 4px 8px; font-size: 11px;
+      background: #f5f5f5; color: #666; border: 1px solid #ddd;
+      border-radius: 4px; cursor: pointer;
+    }
+    .reload-btn:hover { background: #eee; }
+  </style>
+</head>
+<body>
+
+  <!-- 폴더 설정 -->
+  <div class="section">
+    <h3>📁 저장 폴더 설정</h3>
+    <div class="row">
+      <input type="text" id="folderId" placeholder="구글 드라이브 폴더 ID 입력">
+      <button class="btn-green" onclick="saveFolder()">저장</button>
+    </div>
+  </div>
+
+  <!-- 응시현황표 제작 -->
+  <div class="section">
+    <h3>
+      📄 응시현황표 제작
+      <button class="reload-btn" style="float: right;" onclick="loadOptions()">🔄 목록 새로고침</button>
+    </h3>
+
+    <!-- 전체 -->
+    <button class="btn-full btn-blue" onclick="run('generateAll')">
+      🚀 전체 일괄 제작
+    </button>
+
+    <!-- 날짜별 -->
+    <div class="label-small">📅 날짜별 제작</div>
+    <div class="row">
+      <select id="dateSelect"><option value="">날짜 선택...</option></select>
+      <button class="btn-purple" onclick="runWithSelect('generateByDate', 'dateSelect')">제작</button>
+    </div>
+
+    <!-- 학년별 -->
+    <div class="label-small" style="margin-top: 10px;">🎓 학년별 제작</div>
+    <div class="row">
+      <select id="gradeSelect">
+        <option value="">학년 선택...</option>
+        <option value="1학년">1학년</option>
+        <option value="2학년">2학년</option>
+        <option value="3학년">3학년</option>
+      </select>
+      <button class="btn-teal" onclick="runWithSelect('generateByGrade', 'gradeSelect')">제작</button>
+    </div>
+
+    <!-- 과목별 -->
+    <div class="label-small" style="margin-top: 10px;">📚 과목별 제작</div>
+    <div class="row">
+      <select id="subjectSelect"><option value="">과목 선택...</option></select>
+      <button class="btn-orange" onclick="runWithSelect('generateBySubject', 'subjectSelect')">제작</button>
+    </div>
+
+    <!-- 고사실별 -->
+    <div class="label-small" style="margin-top: 10px;">🏫 고사실별 제작</div>
+    <div class="row">
+      <input type="text" id="roomName" placeholder="예: 1-1, 도움실">
+      <button class="btn-orange" onclick="runWithInput('generateByRoom', 'roomName')">제작</button>
+    </div>
+  </div>
+
+  <div id="status" class="status"></div>
+
+  <script>
+    // ===== 초기화 =====
+    window.onload = function() {
+      // 폴더 ID 복원
+      google.script.run
+        .withSuccessHandler(function(id) {
+          if (id) document.getElementById('folderId').value = id;
+        })
+        .getFolderId();
+
+      // 드롭다운 옵션 로드
+      loadOptions();
+    };
+
+    // ===== 드롭다운 옵션 로드 =====
+    function loadOptions() {
+      showStatus('시험 계획 불러오는 중...', 'loading');
+      google.script.run
+        .withSuccessHandler(function(data) {
+          populateSelect('dateSelect',    data.dates,    '날짜 선택...');
+          populateSelect('subjectSelect', data.subjects, '과목 선택...');
+          hideStatus();
+        })
+        .withFailureHandler(function(err) {
+          showStatus('목록 로드 실패: ' + err.message, 'error');
+        })
+        .getPlanOptions();
+    }
+
+    function populateSelect(id, items, placeholder) {
+      var sel = document.getElementById(id);
+      sel.innerHTML = '<option value="">' + placeholder + '</option>';
+      items.forEach(function(item) {
+        var opt = document.createElement('option');
+        opt.value = item;
+        opt.textContent = item;
+        sel.appendChild(opt);
+      });
+    }
+
+    // ===== 실행 함수들 =====
+    function saveFolder() {
+      var id = document.getElementById('folderId').value.trim();
+      if (!id) { showStatus('폴더 ID를 입력해주세요.', 'error'); return; }
+      setLoading(true);
+      google.script.run
+        .withSuccessHandler(function(msg) { showStatus(msg, 'success'); setLoading(false); })
+        .withFailureHandler(function(err) { showStatus(err.message, 'error'); setLoading(false); })
+        .saveFolderId(id);
+    }
+
+    function run(funcName) {
+      setLoading(true);
+      google.script.run
+        .withSuccessHandler(function(msg) { showStatus(msg, 'success'); setLoading(false); })
+        .withFailureHandler(function(err) { showStatus(err.message, 'error'); setLoading(false); })
+        [funcName]();
+    }
+
+    function runWithSelect(funcName, selectId) {
+      var val = document.getElementById(selectId).value;
+      if (!val) { showStatus('먼저 항목을 선택해주세요.', 'error'); return; }
+      setLoading(true);
+      google.script.run
+        .withSuccessHandler(function(msg) { showStatus(msg, 'success'); setLoading(false); })
+        .withFailureHandler(function(err) { showStatus(err.message, 'error'); setLoading(false); })
+        [funcName](val);
+    }
+
+    function runWithInput(funcName, inputId) {
+      var val = document.getElementById(inputId).value.trim();
+      if (!val) { showStatus('값을 입력해주세요.', 'error'); return; }
+      setLoading(true);
+      google.script.run
+        .withSuccessHandler(function(msg) { showStatus(msg, 'success'); setLoading(false); })
+        .withFailureHandler(function(err) { showStatus(err.message, 'error'); setLoading(false); })
+        [funcName](val);
+    }
+
+    // ===== 상태 표시 =====
+    function showStatus(msg, type) {
+      var el = document.getElementById('status');
+      el.className = 'status ' + type;
+      el.innerText = msg;
+    }
+
+    function hideStatus() {
+      document.getElementById('status').style.display = 'none';
+    }
+
+    function setLoading(isLoading) {
+      document.querySelectorAll('button').forEach(function(b) { b.disabled = isLoading; });
+      if (isLoading) showStatus('⏳ 처리 중입니다. 잠시만 기다려주세요...', 'loading');
+    }
+  </script>
+
+</body>
+</html>

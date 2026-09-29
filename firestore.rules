@@ -1,0 +1,42 @@
+rules_version = '2';
+// 로그인 허용 도메인은 .env의 VITE_ALLOWED_DOMAIN과 같아야 한다.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function schoolDomain() { return 'seonyoo.hs.kr'; }
+
+    function signedIn() { return request.auth != null; }
+    function inDomain() {
+      return signedIn()
+        && request.auth.token.email_verified == true
+        && request.auth.token.email.lower().split('@')[1] == schoolDomain();
+    }
+    function me() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function isAdmin() { return inDomain() && me().role == 'admin'; }
+
+    // 계정: 본인 문서만. 처음 만들 때 role은 'teacher'로만 가능, role 변경은 콘솔에서.
+    match /users/{uid} {
+      allow read: if inDomain() && (request.auth.uid == uid || isAdmin());
+      allow create: if inDomain() && request.auth.uid == uid && request.resource.data.role == 'teacher';
+      allow update: if inDomain() && request.auth.uid == uid
+        && request.resource.data.role == resource.data.role;
+    }
+
+    match /schools/{schoolId} {
+      allow read: if inDomain();
+
+      match /exams/{examId} {
+        allow read: if inDomain();
+        allow write: if isAdmin();
+        match /grades/{grade} {
+          allow read: if inDomain();
+          allow write: if isAdmin();
+        }
+      }
+
+      match /vacancies/{year} {
+        allow read: if inDomain();
+        allow write: if isAdmin();
+      }
+    }
+  }
+}
