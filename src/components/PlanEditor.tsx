@@ -21,6 +21,7 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutlined';
 import type { ParsedWorkbook, PlanRow } from '../core';
 import { addPlanRow, findSubjectColumn, removePlanRow, updatePlanRow } from '../core';
+import type { EditFocus } from './useOpenIssue';
 
 const TIME_RANGE = /^(\d{1,2}):(\d{2})\s*~\s*(\d{1,2}):(\d{2})$/;
 
@@ -66,9 +67,21 @@ interface Props {
   workbook: ParsedWorkbook;
   canEdit: boolean;
   onEdit: (fn: (wb: ParsedWorkbook) => ParsedWorkbook) => void;
+  focus?: EditFocus;
 }
 
-export function PlanEditor({ workbook, canEdit, onEdit }: Props) {
+export function PlanEditor({ workbook, canEdit, onEdit, focus }: Props) {
+  const [flashRow, setFlashRow] = useState<number | null>(null);
+
+  // 데이터 검증에서 이동해 오면 그 행을 가운데로 보이고 잠깐 강조
+  useEffect(() => {
+    if (focus?.row === undefined) return;
+    setFlashRow(focus.row);
+    requestAnimationFrame(() => document.querySelector(`[data-plan-row="${focus.row}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }));
+    const t = setTimeout(() => setFlashRow(null), 2200);
+    return () => clearTimeout(t);
+  }, [focus?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const grades = workbook.grades.map((g) => g.grade);
   const update = (i: number, patch: Partial<PlanRow>) => onEdit((wb) => updatePlanRow(wb, i, patch));
 
@@ -93,7 +106,16 @@ export function PlanEditor({ workbook, canEdit, onEdit }: Props) {
             const problems = rowProblems(p, workbook);
             const headers = workbook.grades.find((g) => g.grade === p.grade)?.headers ?? [];
             return (
-              <TableRow key={i} hover sx={problems.length ? { bgcolor: '#fff8f6' } : undefined}>
+              <TableRow
+                key={i}
+                hover
+                data-plan-row={i}
+                sx={{
+                  ...(problems.length ? { bgcolor: '#fff8f6' } : {}),
+                  ...(flashRow === i ? { bgcolor: '#fff59d', outline: '3px solid #f9a825', outlineOffset: -3 } : {}),
+                  transition: 'background-color .3s',
+                }}
+              >
                 <TableCell padding="none" align="center">
                   {problems.length > 0 && (
                     <Tooltip title={problems.join(' / ')}>

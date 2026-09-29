@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router';
 import { Alert, Box, Button, Paper, Stack, Tab, Tabs, Typography } from '@mui/material';
 import DownloadIcon from '@mui/icons-material/Download';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
@@ -14,11 +15,31 @@ import { diffWorkbook, exportWorkbook, parseWorkbook } from '../core';
 import { IssuesPanel } from '../components/IssuesPanel';
 import { GradeEditor } from '../components/GradeEditor';
 import { PlanEditor } from '../components/PlanEditor';
+import { useOpenIssue, type EditFocus } from '../components/useOpenIssue';
 
 /** 시험 자료의 원본 데이터(시험 계획·학년별 명렬)를 웹에서 고치는 화면 */
 export function EditPage({ user }: { user: AppUser }) {
   const { workbook, issues, title, examId, vacancies, saved, version, history, edit, undo, openExam } = useExamStore();
-  const [tab, setTab] = useState('plan');
+  const [params] = useSearchParams();
+  const [tab, setTab] = useState(params.get('tab') ?? 'plan');
+  const openIssue = useOpenIssue(examId);
+
+  // 데이터 검증에서 눌러 이동해 온 위치 (?tab=3학년&subject=확률과통계&hakbeon=30504&n=…)
+  const nonce = params.get('n');
+  const focus: EditFocus | undefined = useMemo(() => {
+    if (!nonce) return undefined;
+    const row = params.get('row');
+    return {
+      nonce,
+      row: row !== null ? Number(row) : undefined,
+      subject: params.get('subject') ?? undefined,
+      hakbeon: params.get('hakbeon') ?? undefined,
+    };
+  }, [nonce]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const t = params.get('tab');
+    if (nonce && t) setTab(t);
+  }, [nonce]); // eslint-disable-line react-hooks/exhaustive-deps
   const [msg, setMsg] = useState<{ kind: 'success' | 'error' | 'info'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [versionsOpen, setVersionsOpen] = useState(false);
@@ -123,7 +144,7 @@ export function EditPage({ user }: { user: AppUser }) {
         </Alert>
       )}
 
-      <IssuesPanel issues={issues} />
+      <IssuesPanel issues={issues} storeKey={examId} onOpen={openIssue} />
       {firebaseConfigured && <VersionDrawer open={versionsOpen} onClose={() => setVersionsOpen(false)} userEmail={user.email} />}
 
       <Paper variant="outlined" sx={{ px: 2, pt: 1, pb: 2 }}>
@@ -134,9 +155,9 @@ export function EditPage({ user }: { user: AppUser }) {
           ))}
         </Tabs>
         {tab === 'plan' ? (
-          <PlanEditor workbook={workbook} canEdit onEdit={edit} />
+          <PlanEditor workbook={workbook} canEdit onEdit={edit} focus={focus} />
         ) : (
-          sheet && <GradeEditor key={sheet.grade} sheet={sheet} canEdit onEdit={edit} />
+          sheet && <GradeEditor key={sheet.grade} sheet={sheet} canEdit onEdit={edit} focus={focus} />
         )}
         {errorCount > 0 && (
           <Box sx={{ mt: 1 }}>

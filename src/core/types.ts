@@ -81,10 +81,16 @@ export interface SubjectRoster {
 
 export type IssueLevel = 'error' | 'warn' | 'info';
 
+/** 검증 항목이 가리키는 곳 — 데이터 수정 화면에서 그 칸·행으로 이동하기 위해 */
+export type IssueLink =
+  | { kind: 'plan'; row: number } // 시험 계획 행 (0부터)
+  | { kind: 'cell'; grade: string; subject: string; hakbeon?: string }; // 학년 명렬의 과목 열(학생 칸)
+
 export interface Issue {
   level: IssueLevel;
   message: string;
   subjectKey?: string;
+  link?: IssueLink;
 }
 
 export interface VacancyItem {

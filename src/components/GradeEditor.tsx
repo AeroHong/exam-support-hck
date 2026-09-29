@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Box,
@@ -26,6 +26,7 @@ import {
   addStudent,
   addSubject,
   cellText,
+  findSubjectColumn,
   makeHakbeon,
   parseRoomCell,
   removeStudent,
@@ -36,6 +37,7 @@ import {
   type StudentField,
 } from '../core';
 import { GridEditor, type CellChange, type GridColumn } from './GridEditor';
+import type { EditFocus } from './useOpenIssue';
 
 const FIELDS: { key: StudentField; label: string; width: number; numeric?: boolean }[] = [
   { key: 'ban', label: '반', width: 44, numeric: true },
@@ -59,9 +61,10 @@ interface Props {
   sheet: GradeSheet;
   canEdit: boolean;
   onEdit: (fn: (wb: ParsedWorkbook) => ParsedWorkbook) => void;
+  focus?: EditFocus;
 }
 
-export function GradeEditor({ sheet, canEdit, onEdit }: Props) {
+export function GradeEditor({ sheet, canEdit, onEdit, focus }: Props) {
   const grade = sheet.grade;
   const [ban, setBan] = useState<number | ''>('');
   const [query, setQuery] = useState('');
@@ -69,6 +72,14 @@ export function GradeEditor({ sheet, canEdit, onEdit }: Props) {
   const [subjectOpen, setSubjectOpen] = useState(false);
   const [replaceOpen, setReplaceOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+
+  // 이동해 온 칸이 가려지지 않도록 반 필터·검색을 푼다
+  useEffect(() => {
+    if (focus?.subject) {
+      setBan('');
+      setQuery('');
+    }
+  }, [focus?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const bans = useMemo(() => [...new Set(sheet.students.map((s) => s.ban))].sort((a, b) => a - b), [sheet.students]);
 
@@ -110,6 +121,16 @@ export function GradeEditor({ sheet, canEdit, onEdit }: Props) {
     ],
     [sheet.headers, canEdit, onEdit, grade],
   );
+
+  // 과목(시험 계획 표기여도 됨)·학번 → 표의 행·열
+  const gridFocus = useMemo(() => {
+    if (!focus?.subject) return undefined;
+    const column = findSubjectColumn(sheet.headers, focus.subject);
+    const col = FIELDS.length + Math.max(0, column ? sheet.headers.indexOf(column) : 0);
+    const index = focus.hakbeon ? sheet.students.findIndex((s) => makeHakbeon(grade, s.ban, s.num) === focus.hakbeon) : 0;
+    const row = visible.indexOf(Math.max(0, index));
+    return { row, col, nonce: focus.nonce };
+  }, [focus, sheet, visible, grade]);
 
   const getText = useCallback(
     (row: number, col: number) => {
@@ -242,6 +263,7 @@ export function GradeEditor({ sheet, canEdit, onEdit }: Props) {
         getStyle={getStyle}
         onChange={onChange}
         rowAction={canEdit ? rowAction : undefined}
+        focus={gridFocus}
       />
 
       <AddStudentDialog

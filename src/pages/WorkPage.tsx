@@ -30,6 +30,7 @@ import { getGoogleAccessToken } from '../firebase/auth';
 import { firebaseConfigured } from '../firebase/app';
 import { logActivity, type ActionType } from '../firebase/activity';
 import { IssuesPanel } from '../components/IssuesPanel';
+import { useOpenIssue } from '../components/useOpenIssue';
 import { SheetPreview } from '../components/SheetPreview';
 import { PrintRoot } from '../export/print/PrintRoot';
 import type { GSheetsResult, GSheetsTarget } from '../export/gsheets';
@@ -47,6 +48,7 @@ const KIND_COLOR = { normal: 'default', doum: 'warning', separate: 'secondary', 
 
 export function WorkPage(_: { user: AppUser }) {
   const { workbook, rosters, issues, title, examId } = useExamStore();
+  const openIssue = useOpenIssue(examId);
   const [mode, setMode] = useState<FilterMode>('ALL');
   const [value, setValue] = useState('');
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
@@ -168,7 +170,7 @@ export function WorkPage(_: { user: AppUser }) {
 
   return (
     <Stack spacing={2}>
-      <IssuesPanel issues={issues} />
+      <IssuesPanel issues={issues} storeKey={examId} onOpen={openIssue} />
 
       <Paper variant="outlined" sx={{ p: 2 }}>
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ alignItems: { md: 'center' } }}>

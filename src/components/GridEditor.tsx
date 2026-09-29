@@ -23,6 +23,8 @@ interface Props {
   onChange: (changes: CellChange[]) => void;
   rowAction?: (row: number) => ReactNode;
   height?: number | string;
+  /** 이 칸을 선택하고 잠깐 강조 (데이터 검증에서 이동해 올 때). nonce가 바뀔 때마다 다시 */
+  focus?: { row: number; col: number; nonce: string };
 }
 
 const ROW_H = 30;
@@ -32,8 +34,9 @@ const ROW_H = 30;
  * 방향키 이동, Enter/F2 편집, 바로 입력하면 덮어쓰기, Delete로 지우기, Tab 오른쪽,
  * 엑셀에서 복사한 범위 붙여넣기(Ctrl+V), 복사(Ctrl+C).
  */
-export function GridEditor({ columns, rowCount, getText, getStyle, onChange, rowAction, height = '70vh' }: Props) {
+export function GridEditor({ columns, rowCount, getText, getStyle, onChange, rowAction, height = '70vh', focus }: Props) {
   const [sel, setSel] = useState({ row: 0, col: 0 });
+  const [flash, setFlash] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null); // 편집 중인 값
   const wrapRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -46,6 +49,23 @@ export function GridEditor({ columns, rowCount, getText, getStyle, onChange, row
   useEffect(() => {
     if (sel.row >= rowCount && rowCount > 0) setSel((s) => ({ ...s, row: rowCount - 1 }));
   }, [rowCount, sel.row]);
+
+  // 데이터 검증에서 이동해 오면: 그 칸 선택 → 표를 화면에 보이게 → 칸을 가운데로 → 잠깐 노랗게
+  useEffect(() => {
+    if (!focus || focus.row < 0 || focus.row >= rowCount) return;
+    setSel({ row: focus.row, col: focus.col });
+    setEditing(null);
+    const key = `${focus.row}:${focus.col}`;
+    setFlash(key);
+    const wrap = wrapRef.current;
+    if (wrap) window.scrollTo({ top: wrap.getBoundingClientRect().top + window.scrollY - 170, behavior: 'smooth' });
+    requestAnimationFrame(() => {
+      wrap?.querySelector(`[data-cell="${key}"]`)?.scrollIntoView({ block: 'center', inline: 'center' });
+      inputRef.current?.focus({ preventScroll: true });
+    });
+    const t = setTimeout(() => setFlash(null), 2200);
+    return () => clearTimeout(t);
+  }, [focus?.nonce, focus?.row, focus?.col]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 선택한 칸이 보이도록 스크롤
   useEffect(() => {
@@ -181,6 +201,7 @@ export function GridEditor({ columns, rowCount, getText, getStyle, onChange, row
               columns={columns}
               stickyLeft={stickyLeft}
               selCol={sel.row === r ? sel.col : -1}
+              flashCol={flash && flash.startsWith(`${r}:`) ? Number(flash.split(':')[1]) : -1}
               editing={sel.row === r ? editing : null}
               getText={getText}
               getStyle={getStyle}
@@ -210,6 +231,7 @@ interface RowProps {
   columns: GridColumn[];
   stickyLeft: number[];
   selCol: number;
+  flashCol: number;
   editing: string | null;
   getText: Props['getText'];
   getStyle: Props['getStyle'];
@@ -220,7 +242,7 @@ interface RowProps {
 
 // 선택·편집 중이 아닌 행은 다시 그리지 않는다 (200명 × 20과목)
 const GridRow = memo(
-  function GridRow({ row, columns, stickyLeft, selCol, editing, getText, getStyle, rowAction, onSelect, input }: RowProps) {
+  function GridRow({ row, columns, stickyLeft, selCol, flashCol, editing, getText, getStyle, rowAction, onSelect, input }: RowProps) {
     return (
       <tr style={{ height: ROW_H }}>
         {rowAction && <td style={{ ...cellStyle, position: 'sticky', left: 0, zIndex: 1, background: '#fafafa', padding: 0 }}>{rowAction(row)}</td>}
@@ -245,6 +267,7 @@ const GridRow = memo(
                 color: st?.color,
                 ...(c.sticky ? { position: 'sticky', left: stickyLeft[col], zIndex: 1 } : {}),
                 ...(selected ? { outline: '2px solid #2e7d32', outlineOffset: -2 } : {}),
+                ...(flashCol === col ? { background: '#fff59d', outline: '3px solid #f9a825', outlineOffset: -3, transition: 'background .3s' } : {}),
               }}
             >
               {selected ? (
@@ -263,6 +286,7 @@ const GridRow = memo(
   },
   (a, b) =>
     a.selCol === b.selCol &&
+    a.flashCol === b.flashCol &&
     a.editing === b.editing &&
     a.getText === b.getText &&
     a.getStyle === b.getStyle &&

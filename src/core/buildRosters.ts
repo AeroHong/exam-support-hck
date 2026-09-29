@@ -69,23 +69,24 @@ export function buildRosters(wb: ParsedWorkbook, opts: BuildOptions = {}): Build
   const rosters: SubjectRoster[] = [];
   const seenKeys = new Set<string>();
 
-  for (const plan of wb.plan) {
+  for (const [planIndex, plan] of wb.plan.entries()) {
     const subjectKey = subjectKeyOf(plan);
+    const planLink = { kind: 'plan' as const, row: planIndex };
     const label = `${plan.dateStr} ${plan.period}교시 ${plan.grade} ${plan.subject}`;
     if (seenKeys.has(subjectKey)) {
-      issues.push({ level: 'warn', subjectKey, message: `[${label}] 시험 계획에 같은 행이 두 번 있습니다(${plan.row}행). 한 번만 만듭니다.` });
+      issues.push({ level: 'warn', subjectKey, link: planLink, message: `[${label}] 시험 계획에 같은 행이 두 번 있습니다(${plan.row}행). 한 번만 만듭니다.` });
       continue;
     }
     seenKeys.add(subjectKey);
 
     const sheet = wb.grades.find((g) => g.grade === plan.grade);
     if (!sheet) {
-      issues.push({ level: 'error', subjectKey, message: `[${label}] '${plan.grade} 응시현황' 시트가 없습니다.` });
+      issues.push({ level: 'error', subjectKey, link: planLink, message: `[${label}] '${plan.grade} 응시현황' 시트가 없습니다.` });
       continue;
     }
     const column = findSubjectColumn(sheet.headers, plan.subject);
     if (!column) {
-      issues.push({ level: 'error', subjectKey, message: `[${label}] 응시현황 시트에 '${plan.subject}' 열이 없습니다.` });
+      issues.push({ level: 'error', subjectKey, link: planLink, message: `[${label}] 응시현황 시트에 '${plan.subject}' 열이 없습니다.` });
       continue;
     }
 
@@ -100,14 +101,22 @@ export function buildRosters(wb: ParsedWorkbook, opts: BuildOptions = {}): Build
     };
     const specials: { student: Student; kind: 'doum' | 'separate'; owner: string; explicit: boolean }[] = [];
     const unknowns: string[] = [];
-    const unrecognized = new Map<string, number>();
+    let firstUnknown: string | undefined;
+    const unrecognized = new Map<string, { n: number; hakbeon: string }>();
     let fromDate = 0;
+    let firstFromDate: string | undefined;
+    // 이 과목 열의 특정 학생 칸으로 가는 링크
+    const cellLink = (hakbeon?: string) => ({ kind: 'cell' as const, grade: plan.grade, subject: column, hakbeon });
+    const hb = (s: Pick<Student, 'grade' | 'ban' | 'num'>) => makeHakbeon(s.grade, s.ban, s.num);
 
     for (const st of sheet.students) {
       const parsed = parseRoomCell(st.cells[column], rules);
       if (!parsed) continue;
       const student: Student = { grade: st.grade, ban: st.ban, num: st.num, name: st.name, gender: st.gender };
-      if (parsed.fromDate) fromDate++;
+      if (parsed.fromDate) {
+        fromDate++;
+        firstFromDate ??= hb(st);
+      }
 
       switch (parsed.kind) {
         case 'normal':
@@ -127,11 +136,14 @@ export function buildRosters(wb: ParsedWorkbook, opts: BuildOptions = {}): Build
           });
           break;
         case 'unknownOwner':
-          unknowns.push(`${makeHakbeon(st.grade, st.ban, st.num)} ${st.name}(${parsed.raw})`);
+          unknowns.push(`${hb(st)} ${st.name}(${parsed.raw})`);
+          firstUnknown ??= hb(st);
           break;
-        case 'unrecognized':
-          unrecognized.set(parsed.raw, (unrecognized.get(parsed.raw) ?? 0) + 1);
+        case 'unrecognized': {
+          const u = unrecognized.get(parsed.raw);
+          unrecognized.set(parsed.raw, { n: (u?.n ?? 0) + 1, hakbeon: u?.hakbeon ?? hb(st) });
           break;
+        }
         case 'excluded':
           break;
       }
@@ -157,6 +169,7 @@ export function buildRosters(wb: ParsedWorkbook, opts: BuildOptions = {}): Build
       issues.push({
         level: 'warn',
         subjectKey,
+        link: cellLink(hb(inferred[0].student)),
         message: `[${label}] 소속 분반이 없는 도움실·별도실 ${inferred.length}명을 담임반으로 추정했습니다. 선택과목이면 '${inferred[0].kind === 'doum' ? '도움실' : '교과7'}/${inferred[0].owner}'처럼 '고사실/소속반'으로 적어 주세요: ${sample.join(', ')}${inferred.length > 6 ? ' …' : ''}`,
       });
     }
@@ -168,21 +181,22 @@ export function buildRosters(wb: ParsedWorkbook, opts: BuildOptions = {}): Build
         issues.push({
           level: 'warn',
           subjectKey,
+          link: cellLink(hb(b.main[0])),
           message: `[${label}] ${roomName}에 ${b.main.length}명만 배정되어 따로 현황표가 만들어집니다(${who}). 별도 고사실이면 '${roomName}/소속반'(예: ${roomName}/3-5)으로 적어 주세요.`,
         });
       }
     }
 
     if (fromDate > 0) {
-      issues.push({ level: 'info', subjectKey, message: `[${label}] 날짜로 바뀐 셀 ${fromDate}개를 고사실 번호로 복원했습니다.` });
+      issues.push({ level: 'info', subjectKey, link: cellLink(firstFromDate), message: `[${label}] 날짜로 바뀐 셀 ${fromDate}개를 고사실 번호로 복원했습니다.` });
     }
-    for (const [raw, n] of unrecognized) {
-      issues.push({ level: 'warn', subjectKey, message: `[${label}] 알 수 없는 값 '${raw}' ${n}건 — 명단에서 빠졌습니다.` });
+    for (const [raw, u] of unrecognized) {
+      issues.push({ level: 'warn', subjectKey, link: cellLink(u.hakbeon), message: `[${label}] 알 수 없는 값 '${raw}' ${u.n}건 — 명단에서 빠졌습니다.` });
     }
 
     const skipped = unknowns.length > 0;
     if (skipped) {
-      issues.push({ level: 'error', subjectKey, message: `[${label}] 소속 미확인(?) 학생이 있어 건너뜁니다: ${unknowns.join(', ')}` });
+      issues.push({ level: 'error', subjectKey, link: cellLink(firstUnknown), message: `[${label}] 소속 미확인(?) 학생이 있어 건너뜁니다: ${unknowns.join(', ')}` });
     }
 
     const gNum = gradeNumber(plan.grade);
@@ -207,7 +221,7 @@ export function buildRosters(wb: ParsedWorkbook, opts: BuildOptions = {}): Build
         }
 
         if (b.kind !== 'waiting' && b.main.length > SEAT_ROWS) {
-          issues.push({ level: 'warn', subjectKey, message: `[${label}] ${roomName} 응시자가 ${b.main.length}명으로 한 장(${SEAT_ROWS}석)을 넘습니다.` });
+          issues.push({ level: 'warn', subjectKey, link: cellLink(hb(b.main[0])), message: `[${label}] ${roomName} 응시자가 ${b.main.length}명으로 한 장(${SEAT_ROWS}석)을 넘습니다.` });
         }
 
         return {
@@ -231,7 +245,7 @@ export function buildRosters(wb: ParsedWorkbook, opts: BuildOptions = {}): Build
       });
 
     if (sheets.length === 0) {
-      issues.push({ level: 'warn', subjectKey, message: `[${label}] 배정된 학생이 없습니다.` });
+      issues.push({ level: 'warn', subjectKey, link: cellLink(), message: `[${label}] 배정된 학생이 없습니다.` });
     }
 
     rosters.push({
