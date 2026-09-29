@@ -23,6 +23,7 @@ describe.skipIf(!existsSync(fixture))('xlsx 내보내기', () => {
     expect(ws.getCell('H4').value).toBe(28);
     expect(ws.getCell('I4').value).toBe('10101 ~ 10128');
     expect(ws.getCell('G7').value).toBe('응시2도움실');
+    expect(ws.getCell('H6').font.color?.argb).toBe('FFA9B2AD'); // 응시1교실 인원수는 연한 회색
     expect(ws.getCell('H7').value).toBe(1);
     expect(ws.getCell('B7').value).toBe('10101');
     // 응시 27명 → 7~33행까지만 명단, 그 아래 빈 행 없음

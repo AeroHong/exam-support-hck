@@ -12,6 +12,7 @@ export const SHEET_COLORS = {
   sumHeadBg: 'E3F1EE', // 요약표 머리글·구분 칸
   sumHeadInk: '1F5A4E',
   zebra: 'F7F9F8', // 명단 짝수 행
+  provisional: 'A9B2AD', // 결시에 따라 바뀌는 값(응시1교실 인원수)
 } as const;
 
 export const SHEET_FONT = 'Malgun Gothic';

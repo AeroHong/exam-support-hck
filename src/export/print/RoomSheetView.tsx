@@ -128,10 +128,11 @@ export function RoomSheetView({ sheet }: { sheet: RoomSheet }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {sum.rows.map((r) => (
+                    {sum.rows.map((r, i) => (
                       <tr key={r.label}>
                         <th className="rs-sub">{r.label}</th>
-                        <td className="rs-count">{r.count}</td>
+                        {/* 응시1교실 인원은 결시가 생기면 바뀌므로 연한 회색 */}
+                        <td className={i === 0 ? 'rs-count rs-provisional' : 'rs-count'}>{r.count}</td>
                         <td>{r.detail}</td>
                       </tr>
                     ))}

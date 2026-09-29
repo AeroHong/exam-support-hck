@@ -170,6 +170,7 @@ function sheetRequests(firstSheetId: number, sheet: RoomSheet, isFirst: boolean)
     requests.push(boxFormat(sid, 4, 6, 5, 9, SUM_HEAD));
     requests.push(boxFormat(sid, 5, 6, 5 + sum.rows.length, 7, SUM_HEAD));
     requests.push(boxFormat(sid, 5, 7, 5 + sum.rows.length, 8, { bold: true, size: 11 }));
+    requests.push(boxFormat(sid, 5, 7, 6, 8, { bold: true, size: 11, ink: C.provisional })); // 응시1교실: 결시로 바뀌는 값
     requests.push(boxFormat(sid, 5, 8, 5 + sum.rows.length, 9, { size: 8 }));
     requests.push(outline(sid, 4, 6, 5 + sum.rows.length, 9));
     // 명단 (A6:E…)

@@ -116,7 +116,12 @@ function addRoomSheet(wb: ExcelJS.Workbook, sheet: RoomSheet, used: Set<string>)
     sum.rows.forEach((r, i) => {
       const row = ws.getRow(6 + i);
       style(Object.assign(row.getCell(7), { value: r.label }), SUM_HEAD);
-      style(Object.assign(row.getCell(8), { value: r.count === '' ? null : r.count }), { size: 11, bold: true });
+      // 응시1교실 인원은 결시가 생기면 바뀌므로 연한 회색
+      style(Object.assign(row.getCell(8), { value: r.count === '' ? null : r.count }), {
+        size: 11,
+        bold: true,
+        ink: i === 0 ? C.provisional : C.ink,
+      });
       style(Object.assign(row.getCell(9), { value: r.detail.replace(/\n/g, ', ') || null }), { size: 8 });
     });
     outline(ws, 5, 7, 5 + sum.rows.length, 9);
