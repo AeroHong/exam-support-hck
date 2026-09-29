@@ -171,24 +171,44 @@ export interface GSheetsResult {
   files: { name: string; url: string }[];
 }
 
-/** 새 Drive 폴더를 만들고 과목마다 스프레드시트 1개(고사실별 시트)를 만든다 */
+export interface GSheetsTarget {
+  parentId: string | null; // Picker로 고른 폴더(공유 드라이브 포함). null이면 내 드라이브 루트
+  subfolderName: string | null; // 값이 있으면 그 안에 하위 폴더를 만들어 저장
+}
+
+// 공유 드라이브에 쓰려면 모든 Drive 호출에 supportsAllDrives가 필요하다
+const DRIVE_FILES = 'https://www.googleapis.com/drive/v3/files?fields=id&supportsAllDrives=true';
+
+/** 과목마다 스프레드시트 1개(고사실별 시트)를 지정한 폴더에 만든다 */
 export async function exportToGoogleSheets(
   token: string,
   rosters: SubjectRoster[],
-  folderName: string,
+  target: GSheetsTarget,
   onProgress?: (done: number, total: number) => void,
 ): Promise<GSheetsResult> {
-  const folder = await gapi<{ id: string }>(token, 'https://www.googleapis.com/drive/v3/files?fields=id', {
-    method: 'POST',
-    body: JSON.stringify({ name: folderName, mimeType: 'application/vnd.google-apps.folder' }),
-  });
+  let folderId = target.parentId;
+  if (target.subfolderName) {
+    const folder = await gapi<{ id: string }>(token, DRIVE_FILES, {
+      method: 'POST',
+      body: JSON.stringify({
+        name: target.subfolderName,
+        mimeType: 'application/vnd.google-apps.folder',
+        ...(folderId ? { parents: [folderId] } : {}),
+      }),
+    });
+    folderId = folder.id;
+  }
 
   const files: GSheetsResult['files'] = [];
   for (const [i, r] of rosters.entries()) {
     const name = subjectFileName(r, '').replace(/\.$/, '');
-    const file = await gapi<{ id: string }>(token, 'https://www.googleapis.com/drive/v3/files?fields=id', {
+    const file = await gapi<{ id: string }>(token, DRIVE_FILES, {
       method: 'POST',
-      body: JSON.stringify({ name, mimeType: 'application/vnd.google-apps.spreadsheet', parents: [folder.id] }),
+      body: JSON.stringify({
+        name,
+        mimeType: 'application/vnd.google-apps.spreadsheet',
+        ...(folderId ? { parents: [folderId] } : {}),
+      }),
     });
     await gapi(token, `https://sheets.googleapis.com/v4/spreadsheets/${file.id}:batchUpdate`, {
       method: 'POST',
@@ -197,5 +217,8 @@ export async function exportToGoogleSheets(
     files.push({ name, url: `https://docs.google.com/spreadsheets/d/${file.id}/edit` });
     onProgress?.(i + 1, rosters.length);
   }
-  return { folderUrl: `https://drive.google.com/drive/folders/${folder.id}`, files };
+  return {
+    folderUrl: folderId ? `https://drive.google.com/drive/folders/${folderId}` : 'https://drive.google.com/drive/my-drive',
+    files,
+  };
 }

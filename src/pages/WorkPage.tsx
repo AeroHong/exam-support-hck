@@ -34,7 +34,8 @@ import { saveExam } from '../firebase/repo';
 import { IssuesPanel } from '../components/IssuesPanel';
 import { SheetPreview } from '../components/SheetPreview';
 import { PrintRoot } from '../export/print/PrintRoot';
-import type { GSheetsResult } from '../export/gsheets';
+import type { GSheetsResult, GSheetsTarget } from '../export/gsheets';
+import { GSheetsDialog } from '../components/GSheetsDialog';
 
 const MODES: { value: FilterMode; label: string }[] = [
   { value: 'ALL', label: '전체' },
@@ -56,6 +57,7 @@ export function WorkPage({ user }: { user: AppUser }) {
   const [status, setStatus] = useState<{ kind: 'success' | 'error' | 'info'; text: string } | null>(null);
   const [progress, setProgress] = useState<number | null>(null);
   const [gsResult, setGsResult] = useState<GSheetsResult | null>(null);
+  const [gsOpen, setGsOpen] = useState(false);
   const [examTitle, setExamTitle] = useState(title);
 
   useEffect(() => setExamTitle(title), [title]);
@@ -137,19 +139,18 @@ export function WorkPage({ user }: { user: AppUser }) {
       return `${fileName} 다운로드 (${selected.length}과목, ${selectedSheets.length}장)`;
     });
 
-  const onGSheets = () =>
-    run('Google 스프레드시트 만들기', async () => {
+  const onGSheets = (target: GSheetsTarget) => {
+    setGsOpen(false);
+    return run('Google 스프레드시트 만들기', async () => {
       setGsResult(null);
       const token = await getGoogleAccessToken();
       const { exportToGoogleSheets } = await import('../export/gsheets');
       setProgress(0);
-      const stamp = new Date().toLocaleString('ko-KR', { hour12: false }).replace(/[/:]/g, '-');
-      const res = await exportToGoogleSheets(token, selected, `${examTitle || '응시현황표'} (${stamp})`, (d, t) =>
-        setProgress((d / t) * 100),
-      );
+      const res = await exportToGoogleSheets(token, selected, target, (d, t) => setProgress((d / t) * 100));
       setGsResult(res);
       return `Google Drive에 ${res.files.length}개 파일을 만들었습니다.`;
     });
+  };
 
   const onSave = () =>
     run('저장', async () => {
@@ -232,7 +233,7 @@ export function WorkPage({ user }: { user: AppUser }) {
             XLSX
           </Button>
           {firebaseConfigured && (
-            <Button variant="outlined" startIcon={<CloudUploadIcon />} disabled={!selected.length} onClick={onGSheets}>
+            <Button variant="outlined" startIcon={<CloudUploadIcon />} disabled={!selected.length} onClick={() => setGsOpen(true)}>
               Google 시트
             </Button>
           )}
@@ -322,6 +323,15 @@ export function WorkPage({ user }: { user: AppUser }) {
       </Stack>
 
       {printing && <PrintRoot sheets={printing} />}
+      {gsOpen && (
+        <GSheetsDialog
+          open
+          defaultSubfolder={`${examTitle || '응시현황표'} 응시현황표 ${new Date().toLocaleDateString('ko-KR')}`}
+          count={{ subjects: selected.length, sheets: selectedSheets.length }}
+          onClose={() => setGsOpen(false)}
+          onConfirm={onGSheets}
+        />
+      )}
     </Stack>
   );
 }
