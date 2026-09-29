@@ -3,8 +3,10 @@ import {
   doc,
   getDoc,
   getDocs,
+  onSnapshot,
   orderBy,
   query,
+  runTransaction,
   serverTimestamp,
   writeBatch,
 } from 'firebase/firestore';
@@ -13,7 +15,8 @@ import { db, SCHOOL_ID } from './app';
 import { COL, emailToDocId, type MemberRole } from './schema';
 import { addActivityToBatch, type ActivityInput } from './activity';
 
-// /schools/{schoolId}/exams/{examId}                     { title, sourceFileName, plan, vacancies, versionCount, latestVersionId, createdBy, updatedBy, updatedAt }
+// /schools/{schoolId}/exams/{examId}                     { title, sourceFileName, plan, vacancies, revision, versionCount, latestVersionId, createdBy, updatedBy, updatedByName, updatedAt }
+//   revision: 저장할 때마다 1씩 오르는 번호. 연 뒤에 다른 사람이 저장했는지 판별(동시 편집 충돌 방지, 규칙으로 강제)
 // /schools/{schoolId}/exams/{examId}/grades/{g}          GradeSheet (~200명, 1MB 이하)
 // /schools/{schoolId}/exams/{examId}/versions/{id}       버전 요약 { versionNo, action, summary, details, by, byName, at }
 // /schools/{schoolId}/exams/{examId}/versionData/{id}    버전 전체 데이터 { title, sourceFileName, plan, vacancies, grades[] } — 수정·삭제 불가
@@ -36,10 +39,24 @@ export interface ExamData {
   vacancies: VacancyItem[];
 }
 
-/** 시험 문서에 함께 저장되는 버전 정보 */
+/** 시험 문서에 함께 저장되는 버전·동시 편집 정보 */
 export interface VersionInfo {
   versionCount: number; // 지금까지 만든 버전 수 (0이면 버전 기록 시작 전 자료)
   latestVersionId: string | null;
+  revision: number; // 저장 번호 — 내가 연 뒤 다른 사람이 저장했는지 판별
+}
+
+export const EMPTY_VERSION: VersionInfo = { versionCount: 0, latestVersionId: null, revision: 0 };
+
+/** 내가 연 뒤에 다른 사람이 먼저 저장해서 저장을 막았을 때 */
+export class SaveConflictError extends Error {
+  constructor(
+    public readonly byName: string,
+    public readonly versionCount: number,
+  ) {
+    super(`${byName || '다른 사용자'}님이 먼저 저장했습니다(v${versionCount}).`);
+    this.name = 'SaveConflictError';
+  }
 }
 
 export type VersionAction = 'baseline' | 'exam_create' | 'exam_save' | 'exam_replace' | 'exam_restore';
@@ -106,8 +123,10 @@ export interface SaveResult extends VersionInfo {
 }
 
 /**
- * 시험 자료 저장 — 한 batch로 쓴다:
+ * 시험 자료 저장 — 한 transaction으로 쓴다:
  *   시험 문서 + 학년 시트 + 새 버전(요약·전체 데이터) + 활동 기록(버전 연결)
+ * 내가 연 뒤(opts.version.revision) 다른 사람이 먼저 저장했으면 SaveConflictError — 덮어쓰지 않는다.
+ * 버전 번호는 서버의 값으로 매긴다(여러 사람이 저장해도 겹치지 않음).
  * examId가 없으면 새 문서(자동 ID)를 만든다.
  */
 export async function saveExam(examId: string | null, data: ExamData, opts: SaveOptions): Promise<SaveResult> {
@@ -115,48 +134,77 @@ export async function saveExam(examId: string | null, data: ExamData, opts: Save
   const examRef = examId ? doc(examsCol(), examId) : doc(examsCol());
   const versionsCol = collection(examRef, COL.VERSIONS);
   const dataCol = collection(examRef, COL.VERSION_DATA);
-  const batch = writeBatch(d);
-  let n = opts.version.versionCount;
 
-  const writeVersion = (vData: ExamData, meta: { action: VersionAction; summary: string; details: string[] }) => {
-    const ref = doc(versionsCol);
-    n += 1;
-    batch.set(ref, { versionNo: n, ...meta, by: opts.by, byName: opts.byName, at: serverTimestamp() });
-    batch.set(doc(dataCol, ref.id), snapshotOf(vData));
-    return ref.id;
-  };
+  return runTransaction(d, async (tx) => {
+    let n = 0;
+    let revision = 0;
+    if (examId) {
+      const snap = await tx.get(examRef);
+      const server = snap.data() ?? {};
+      revision = (server.revision as number | undefined) ?? 0;
+      n = (server.versionCount as number | undefined) ?? 0;
+      if (revision !== opts.version.revision) throw new SaveConflictError(server.updatedByName ?? server.updatedBy ?? '', n);
+    }
 
-  if (opts.baseline && n === 0) {
-    writeVersion(opts.baseline, { action: 'baseline', summary: '기준 저장본 (버전 기록을 시작하기 전 마지막 저장)', details: [] });
-  }
-  const versionId = writeVersion(data, { action: opts.action, summary: opts.summary, details: opts.details.slice(0, 301) });
+    const writeVersion = (vData: ExamData, meta: { action: VersionAction; summary: string; details: string[] }) => {
+      const ref = doc(versionsCol);
+      n += 1;
+      tx.set(ref, { versionNo: n, ...meta, by: opts.by, byName: opts.byName, at: serverTimestamp() });
+      tx.set(doc(dataCol, ref.id), snapshotOf(vData));
+      return ref.id;
+    };
 
-  batch.set(
-    examRef,
-    {
-      title: data.title,
-      sourceFileName: data.sourceFileName,
-      plan: data.workbook.plan,
-      vacancies: cleanVacancies(data.vacancies),
-      versionCount: n,
-      latestVersionId: versionId,
-      updatedBy: opts.by,
-      updatedAt: serverTimestamp(),
-      ...(examId ? {} : { createdBy: opts.by, createdAt: serverTimestamp() }),
-    },
-    { merge: true },
-  );
-  for (const g of data.workbook.grades) batch.set(doc(examRef, COL.GRADES, g.grade), g);
-  addActivityToBatch(batch, {
-    action: opts.action,
-    examId: examRef.id,
-    examTitle: data.title,
-    summary: `v${n} · ${opts.summary}`,
-    details: opts.details,
-    versionId,
+    if (opts.baseline && n === 0) {
+      writeVersion(opts.baseline, { action: 'baseline', summary: '기준 저장본 (버전 기록을 시작하기 전 마지막 저장)', details: [] });
+    }
+    const versionId = writeVersion(data, { action: opts.action, summary: opts.summary, details: opts.details.slice(0, 301) });
+
+    tx.set(
+      examRef,
+      {
+        title: data.title,
+        sourceFileName: data.sourceFileName,
+        plan: data.workbook.plan,
+        vacancies: cleanVacancies(data.vacancies),
+        revision: revision + 1,
+        versionCount: n,
+        latestVersionId: versionId,
+        updatedBy: opts.by,
+        updatedByName: opts.byName,
+        updatedAt: serverTimestamp(),
+        ...(examId ? {} : { createdBy: opts.by, createdAt: serverTimestamp() }),
+      },
+      { merge: true },
+    );
+    for (const g of data.workbook.grades) tx.set(doc(examRef, COL.GRADES, g.grade), g);
+    addActivityToBatch(tx, {
+      action: opts.action,
+      examId: examRef.id,
+      examTitle: data.title,
+      summary: `v${n} · ${opts.summary}`,
+      details: opts.details,
+      versionId,
+    });
+    return { examId: examRef.id, versionCount: n, latestVersionId: versionId, revision: revision + 1 };
   });
-  await batch.commit();
-  return { examId: examRef.id, versionCount: n, latestVersionId: versionId };
+}
+
+/** 시험 문서의 저장 상태를 실시간으로 지켜본다 — 다른 사람이 저장하면 알리기 위해 */
+export function watchExam(
+  examId: string,
+  onChange: (s: VersionInfo & { updatedBy: string; updatedByName: string }) => void,
+): () => void {
+  return onSnapshot(doc(examsCol(), examId), (snap) => {
+    if (!snap.exists() || snap.metadata.hasPendingWrites) return;
+    const v = snap.data();
+    onChange({
+      revision: v.revision ?? 0,
+      versionCount: v.versionCount ?? 0,
+      latestVersionId: v.latestVersionId ?? null,
+      updatedBy: v.updatedBy ?? '',
+      updatedByName: v.updatedByName ?? v.updatedBy ?? '',
+    });
+  });
 }
 
 export async function loadExam(examId: string): Promise<ExamData & VersionInfo> {
@@ -173,11 +221,12 @@ export async function loadExam(examId: string): Promise<ExamData & VersionInfo> 
     vacancies: (v.vacancies as VacancyItem[] | undefined) ?? [],
     versionCount: v.versionCount ?? 0,
     latestVersionId: v.latestVersionId ?? null,
+    revision: v.revision ?? 0,
   };
 }
 
 export async function listVersions(examId: string): Promise<VersionMeta[]> {
-  const snap = await getDocs(query(collection(doc(examsCol(), examId), COL.VERSIONS), orderBy('versionNo', 'desc')));
+  const snap = await getDocs(query(collection(doc(examsCol(), examId), COL.VERSIONS), orderBy('versionNo', 'desc'), orderBy('at', 'desc')));
   return snap.docs.map((x) => {
     const v = x.data();
     return {

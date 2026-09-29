@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { Issue, ParsedWorkbook, SubjectRoster, VacancyItem } from '../core';
 import { buildRosters, findConflicts, validatePlan } from '../core';
-import type { VersionInfo } from '../firebase/repo';
+import { EMPTY_VERSION, type VersionInfo } from '../firebase/repo';
 
 const HISTORY_LIMIT = 50;
 
@@ -22,7 +22,8 @@ interface ExamState {
   issues: Issue[];
   dirty: boolean; // 저장 후 수정한 내용이 있는지
   saved: SavedSnapshot | null;
-  version: VersionInfo; // 서버의 버전 번호 (저장할 때 다음 번호를 매긴다)
+  version: VersionInfo; // 내가 연 저장본의 버전·저장 번호 (저장할 때 서버와 비교)
+  saving: boolean; // 저장 중 — 내 저장이 실시간 알림으로 되돌아올 때 무시하기 위해
   history: ParsedWorkbook[]; // 되돌리기용 이전 상태
   /** 시험 자료 열기(저장된 상태로) */
   openExam: (
@@ -35,6 +36,12 @@ interface ExamState {
   setTitle: (title: string) => void;
   setVacancies: (v: VacancyItem[]) => void;
   markSaved: (examId: string, version?: VersionInfo) => void;
+  setSaving: (v: boolean) => void;
+  /** 동시 편집: 최신 저장본을 기준으로 삼고, 그 위에 합친 내 변경을 '저장 안 됨' 상태로 올린다 */
+  rebase: (
+    latest: { title: string; sourceFileName: string; workbook: ParsedWorkbook; vacancies: VacancyItem[] } & VersionInfo,
+    merged: { title: string; workbook: ParsedWorkbook; vacancies: VacancyItem[] },
+  ) => void;
   close: () => void;
 }
 
@@ -56,14 +63,15 @@ export const useExamStore = create<ExamState>((set, get) => ({
   issues: [],
   dirty: false,
   saved: null,
-  version: { versionCount: 0, latestVersionId: null },
+  version: EMPTY_VERSION,
+  saving: false,
   history: [],
 
-  openExam(examId, { versionCount = 0, latestVersionId = null, ...data }) {
+  openExam(examId, { versionCount = 0, latestVersionId = null, revision = 0, ...data }) {
     set({
       examId,
       ...data,
-      version: { versionCount, latestVersionId },
+      version: { versionCount, latestVersionId, revision },
       ...compute(data.workbook, data.vacancies),
       dirty: false,
       history: [],
@@ -94,6 +102,25 @@ export const useExamStore = create<ExamState>((set, get) => ({
     set({ vacancies: v, ...compute(get().workbook, v), dirty: true });
   },
 
+  setSaving(v) {
+    set({ saving: v });
+  },
+
+  rebase(latest, merged) {
+    const { versionCount, latestVersionId, revision, ...saved } = latest;
+    set({
+      title: merged.title,
+      sourceFileName: saved.sourceFileName,
+      workbook: merged.workbook,
+      vacancies: merged.vacancies,
+      ...compute(merged.workbook, merged.vacancies),
+      saved: { workbook: saved.workbook, title: saved.title, vacancies: saved.vacancies },
+      version: { versionCount, latestVersionId, revision },
+      dirty: true,
+      history: [],
+    });
+  },
+
   markSaved(examId, version) {
     const { workbook, title, vacancies } = get();
     set({ examId, dirty: false, saved: workbook ? { workbook, title, vacancies } : null, ...(version ? { version } : {}) });
@@ -110,7 +137,8 @@ export const useExamStore = create<ExamState>((set, get) => ({
       issues: [],
       dirty: false,
       saved: null,
-      version: { versionCount: 0, latestVersionId: null },
+      version: EMPTY_VERSION,
+      saving: false,
       history: [],
     });
   },

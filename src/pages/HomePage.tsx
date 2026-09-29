@@ -20,7 +20,7 @@ import UploadFileIcon from '@mui/icons-material/UploadFile';
 import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined';
 import type { AppUser } from '../firebase/auth';
 import { firebaseConfigured } from '../firebase/app';
-import { deleteExam, listExams, saveExam, type ExamMeta } from '../firebase/repo';
+import { deleteExam, EMPTY_VERSION, listExams, saveExam, type ExamMeta } from '../firebase/repo';
 import { diffWorkbook, parseWorkbook } from '../core';
 import { titleFromFileName, useExamStore } from '../store/examStore';
 
@@ -61,7 +61,7 @@ export function HomePage({ user }: { user: AppUser }) {
       const title = titleFromFileName(file.name);
       const data = { title, sourceFileName: file.name, workbook, vacancies: [] };
       let id = 'local';
-      let version = { versionCount: 0, latestVersionId: null as string | null };
+      let version = EMPTY_VERSION;
       if (firebaseConfigured) {
         const diff = diffWorkbook(null, workbook);
         const res = await saveExam(null, data, {
@@ -85,7 +85,12 @@ export function HomePage({ user }: { user: AppUser }) {
   };
 
   const open = (ex: ExamMeta) => {
-    if (openId !== ex.id && !leaveCurrent()) return;
+    if (openId !== ex.id) {
+      if (!leaveCurrent()) return;
+    } else if (!dirty) {
+      // 같은 시험이라도 저장 안 한 변경이 없으면 서버에서 새로 받는다 (그사이 다른 사람이 저장했을 수 있음)
+      close();
+    }
     navigate(`/exams/${ex.id}/work`);
   };
 

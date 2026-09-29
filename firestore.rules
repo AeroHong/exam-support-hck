@@ -41,6 +41,17 @@ service cloud.firestore {
     // 응시현황표 사용자 = 관리자 또는 담당교사
     function canUseExamRoster(schoolId) { return isSchoolAdmin(schoolId) || isExamRosterManager(schoolId); }
 
+    // 동시 편집 보호 — 시험 문서의 revision(저장 번호)은 저장마다 정확히 1씩 올라야 한다.
+    // 내가 연 뒤 다른 사람이 저장했으면(번호가 이미 올라가 있으면) 내 저장은 거부된다.
+    // 학년 시트·버전은 같은 저장(번호가 1 오르는 batch·transaction) 안에서만 쓸 수 있다.
+    function examDoc(schoolId, examId) { return /databases/$(database)/documents/schools/$(schoolId)/exams/$(examId); }
+    function revisionBefore(schoolId, examId) {
+      return exists(examDoc(schoolId, examId)) ? get(examDoc(schoolId, examId)).data.get('revision', 0) : 0;
+    }
+    function revisionBumped(schoolId, examId) {
+      return getAfter(examDoc(schoolId, examId)).data.get('revision', 0) == revisionBefore(schoolId, examId) + 1;
+    }
+
     // 계정: 본인 문서만. 처음 만들 때 role은 teacher로만, role·schoolId는 본인이 바꿀 수 없음(관리자 지정은 콘솔).
     match /users/{uid} {
       allow get: if inDomain() && request.auth.uid == uid;
@@ -81,20 +92,26 @@ service cloud.firestore {
       }
 
       match /exams/{examId} {
-        allow read, create, update: if canUseExamRoster(schoolId);
+        allow read: if canUseExamRoster(schoolId);
+        allow create: if canUseExamRoster(schoolId) && request.resource.data.revision == 1;
+        allow update: if canUseExamRoster(schoolId)
+          && request.resource.data.revision == resource.data.get('revision', 0) + 1;
         allow delete: if isRosterAdmin(schoolId);
         match /grades/{grade} {
-          allow read, create, update: if canUseExamRoster(schoolId);
+          allow read: if canUseExamRoster(schoolId);
+          allow create, update: if canUseExamRoster(schoolId) && revisionBumped(schoolId, examId);
           allow delete: if isRosterAdmin(schoolId);
         }
         // 데이터 버전 — 저장 때 추가만. 고칠 수 없고, 시험 자료를 통째로 지울 때만 관리자가 삭제.
         match /versions/{versionId} {
-          allow read, create: if canUseExamRoster(schoolId);
+          allow read: if canUseExamRoster(schoolId);
+          allow create: if canUseExamRoster(schoolId) && revisionBumped(schoolId, examId);
           allow update: if false;
           allow delete: if isRosterAdmin(schoolId);
         }
         match /versionData/{versionId} {
-          allow read, create: if canUseExamRoster(schoolId);
+          allow read: if canUseExamRoster(schoolId);
+          allow create: if canUseExamRoster(schoolId) && revisionBumped(schoolId, examId);
           allow update: if false;
           allow delete: if isRosterAdmin(schoolId);
         }

@@ -14,6 +14,7 @@ import { ActivityPage } from './pages/ActivityPage';
 import { NoAccessPage } from './pages/NoAccessPage';
 import { useExamStore } from './store/examStore';
 import { RecentActivityPanel } from './components/RecentActivityPanel';
+import { UpdateNotice } from './components/UpdateNotice';
 
 /** Firebase 미설정(로컬 모드)일 때 쓰는 가상 사용자 */
 const LOCAL_USER: AppUser = { uid: 'local', email: '', name: '로컬 모드', role: 'admin' };
@@ -94,6 +95,7 @@ export function App() {
 
       {/* 최근 활동 — 활동 기록 화면에서는 같은 내용이라 숨김 */}
       {firebaseConfigured && location.pathname !== '/activity' && <RecentActivityPanel />}
+      <UpdateNotice />
     </Box>
   );
 }

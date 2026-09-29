@@ -4,24 +4,56 @@
       "collectionGroup": "activityLogs",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "examId", "order": "ASCENDING" },
-        { "fieldPath": "at", "order": "DESCENDING" }
+        {
+          "fieldPath": "examId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "at",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "activityLogs",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "email", "order": "ASCENDING" },
-        { "fieldPath": "at", "order": "DESCENDING" }
+        {
+          "fieldPath": "email",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "at",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "activityLogs",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "action", "order": "ASCENDING" },
-        { "fieldPath": "at", "order": "DESCENDING" }
+        {
+          "fieldPath": "action",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "at",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "versions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "versionNo",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "at",
+          "order": "DESCENDING"
+        }
       ]
     }
   ],

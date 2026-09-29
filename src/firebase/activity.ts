@@ -15,6 +15,7 @@ import {
   where,
   type DocumentReference,
   type QueryDocumentSnapshot,
+  type Transaction,
   type WriteBatch,
 } from 'firebase/firestore';
 import { auth, db, SCHOOL_ID } from './app';
@@ -85,10 +86,11 @@ export function logActivity(input: ActivityInput): void {
   setDoc(doc(logsCol()), payload(input)).catch((e) => console.error('[활동 기록 실패]', input.action, e));
 }
 
-/** 저장 등과 같은 batch에 기록을 넣는다 (함께 성공하거나 함께 실패) */
-export function addActivityToBatch(batch: WriteBatch, input: ActivityInput): DocumentReference {
+/** 저장 등과 같은 batch·transaction에 기록을 넣는다 (함께 성공하거나 함께 실패) */
+export function addActivityToBatch(batch: WriteBatch | Transaction, input: ActivityInput): DocumentReference {
   const ref = doc(logsCol());
-  batch.set(ref, payload(input));
+  if ('commit' in batch) batch.set(ref, payload(input));
+  else batch.set(ref, payload(input));
   return ref;
 }
 

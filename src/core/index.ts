@@ -10,3 +10,4 @@ export * from './summary';
 export * from './editWorkbook';
 export * from './exportWorkbook';
 export * from './diffWorkbook';
+export * from './mergeWorkbook';

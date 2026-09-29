@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { after, before, beforeEach, describe, it } from 'node:test';
 import { assertFails, assertSucceeds, initializeTestEnvironment } from '@firebase/rules-unit-testing';
-import { deleteDoc, doc, getDoc, getDocs, collection, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { deleteDoc, doc, getDoc, getDocs, collection, setDoc, updateDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
 
 const SCHOOL = 'seonyoo-hs';
 const emailToDocId = (e) => e.toLowerCase().replace(/\./g, '_').replace(/@/g, '__at__');
@@ -35,7 +35,7 @@ beforeEach(async () => {
     await setDoc(doc(db, 'users', OTHER_ADMIN.uid), { email: OTHER_ADMIN.email, role: 'admin', schoolId: 'other-hs' });
     await setDoc(managerRef(db, MANAGER.email), { email: MANAGER.email.toLowerCase(), name: '', role: 'manager', addedBy: ADMIN.uid });
     await setDoc(managerRef(db, MEMBER_ADMIN.email), { email: MEMBER_ADMIN.email, name: '', role: 'admin', addedBy: ADMIN.uid });
-    await setDoc(examRef(db), { title: '중간고사' });
+    await setDoc(examRef(db), { title: '중간고사', revision: 3 });
     await setDoc(doc(db, 'schools', SCHOOL, 'exams', 'e1', 'grades', '1학년'), { grade: '1학년' });
   });
 });
@@ -44,7 +44,7 @@ describe('관리자', () => {
   it('시험 자료 읽기·쓰기·삭제', async () => {
     const db = as(ADMIN);
     await assertSucceeds(getDoc(examRef(db)));
-    await assertSucceeds(setDoc(examRef(db), { title: '수정' }));
+    await assertSucceeds(setDoc(examRef(db), { title: '수정', revision: 4 }));
     await assertSucceeds(deleteDoc(examRef(db)));
   });
   it('담당교사 지정·목록·해제', async () => {
@@ -56,12 +56,14 @@ describe('관리자', () => {
 });
 
 describe('담당교사', () => {
-  it('시험 자료 읽기·저장(결번 포함)', async () => {
+  it('시험 자료 읽기·저장(결번 포함) — 저장 번호를 1 올리며 학년 시트와 함께', async () => {
     const db = as(MANAGER);
     await assertSucceeds(getDoc(examRef(db)));
-    await assertSucceeds(setDoc(examRef(db), { title: '담당교사 수정', vacancies: [] }));
-    await assertSucceeds(setDoc(doc(db, 'schools', SCHOOL, 'exams', 'e1', 'grades', '1학년'), { grade: '1학년', x: 1 }));
-    await assertSucceeds(setDoc(doc(db, 'schools', SCHOOL, 'exams', 'new1'), { title: '새 시험' }));
+    const b = writeBatch(db);
+    b.set(examRef(db), { title: '담당교사 수정', vacancies: [], revision: 4 }, { merge: true });
+    b.set(doc(db, 'schools', SCHOOL, 'exams', 'e1', 'grades', '1학년'), { grade: '1학년', x: 1 });
+    await assertSucceeds(b.commit());
+    await assertSucceeds(setDoc(doc(db, 'schools', SCHOOL, 'exams', 'new1'), { title: '새 시험', revision: 1 }));
   });
   it('시험 자료 삭제는 안 됨', async () => {
     await assertFails(deleteDoc(examRef(as(MANAGER))));
@@ -125,13 +127,53 @@ describe('활동 기록', () => {
   });
 });
 
+describe('동시 편집 보호 (revision)', () => {
+  const gradeRef = (db) => doc(db, 'schools', SCHOOL, 'exams', 'e1', 'grades', '1학년');
+
+  it('내가 연 뒤 다른 사람이 저장했으면(번호가 이미 오름) 내 저장은 거부', async () => {
+    const db = as(MANAGER);
+    await assertFails(setDoc(examRef(db), { title: '옛 화면', revision: 3 }, { merge: true })); // 같은 번호
+    await assertFails(setDoc(examRef(db), { title: '건너뛰기', revision: 6 }, { merge: true })); // 1이 아님
+  });
+  it('저장 번호가 없는 옛 앱의 저장은 거부', async () => {
+    const db = as(MANAGER);
+    const b = writeBatch(db);
+    b.set(examRef(db), { title: '옛 앱', updatedBy: MANAGER.email }, { merge: true });
+    b.set(gradeRef(db), { grade: '1학년', stale: true });
+    await assertFails(b.commit());
+  });
+  it('앱의 실제 저장과 같은 크기의 한 번 쓰기 (시험·학년 3·기준+새 버전·활동 기록)', async () => {
+    const db = as(MANAGER);
+    const e = (c, id) => doc(db, 'schools', SCHOOL, 'exams', 'e1', c, id);
+    const b = writeBatch(db);
+    b.set(examRef(db), { title: '저장', revision: 4, versionCount: 2, latestVersionId: 'vb' }, { merge: true });
+    for (const g of ['1학년', '2학년', '3학년']) b.set(e('grades', g), { grade: g });
+    for (const v of ['va', 'vb']) {
+      b.set(e('versions', v), { versionNo: v === 'va' ? 1 : 2 });
+      b.set(e('versionData', v), { title: '저장', grades: [] });
+    }
+    b.set(doc(db, 'schools', SCHOOL, 'activityLogs', 'save1'), {
+      action: 'exam_save', summary: 'v2 · 저장', details: [], examId: 'e1', examTitle: '저장', versionId: 'vb',
+      uid: MANAGER.uid, email: MANAGER.email.toLowerCase(), name: '', at: serverTimestamp(),
+    });
+    await assertSucceeds(b.commit());
+  });
+  it('학년 시트만 따로 덮어쓰기 거부', async () => {
+    await assertFails(setDoc(gradeRef(as(MANAGER)), { grade: '1학년', stale: true }));
+  });
+});
+
 describe('데이터 버전', () => {
   const vRef = (db, c, id) => doc(db, 'schools', SCHOOL, 'exams', 'e1', c, id);
 
-  it('사용자는 버전을 추가·조회하지만 고치거나 지울 수 없다', async () => {
+  it('사용자는 저장과 함께 버전을 추가·조회하지만 고치거나 지울 수 없다', async () => {
     const db = as(MANAGER);
-    await assertSucceeds(setDoc(vRef(db, 'versions', 'v1'), { versionNo: 1, action: 'exam_save' }));
-    await assertSucceeds(setDoc(vRef(db, 'versionData', 'v1'), { title: 't', plan: [], grades: [] }));
+    const b = writeBatch(db);
+    b.set(examRef(db), { revision: 4, versionCount: 1 }, { merge: true });
+    b.set(vRef(db, 'versions', 'v1'), { versionNo: 1, action: 'exam_save' });
+    b.set(vRef(db, 'versionData', 'v1'), { title: 't', plan: [], grades: [] });
+    await assertSucceeds(b.commit());
+    await assertFails(setDoc(vRef(db, 'versions', 'v2'), { versionNo: 2 })); // 저장 없이 버전만
     await assertSucceeds(getDocs(collection(db, 'schools', SCHOOL, 'exams', 'e1', 'versions')));
     await assertFails(updateDoc(vRef(db, 'versions', 'v1'), { summary: '조작' }));
     await assertFails(setDoc(vRef(db, 'versionData', 'v1'), { title: '덮어쓰기' }));
