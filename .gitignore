@@ -9,3 +9,4 @@ fixtures/
 
 # 에뮬레이터 로그
 *-debug.log
+tsconfig.tsbuildinfo
