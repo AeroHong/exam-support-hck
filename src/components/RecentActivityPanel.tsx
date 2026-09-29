@@ -150,20 +150,36 @@ function TopTicker({ logs, error, now }: ViewProps) {
   const [alerting, setAlerting] = useState(false);
   const [hover, setHover] = useState(false);
   const lastId = useRef<string | null>(null);
+  const alertTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const latest = logs[0];
+  const latestId = latest?.id ?? null;
 
-  // 처음 불러온 것은 알리지 않고, 그 뒤 새 활동이 오면 잠깐 펼친다
+  // 처음 불러온 것은 알리지 않고, 그 뒤 '새' 활동(id가 바뀜)이 오면 잠깐 펼친다.
+  // 같은 기록이 다시 전달돼도(서버 시각 확정 등) 타이머를 건드리지 않도록 id만 본다.
   useEffect(() => {
-    if (!latest) return;
-    if (lastId.current !== null && lastId.current !== latest.id) {
+    if (!latestId) return;
+    if (lastId.current !== null && lastId.current !== latestId) {
       setAlerting(true);
-      const t = setTimeout(() => setAlerting(false), ALERT_MS);
-      lastId.current = latest.id;
-      return () => clearTimeout(t);
+      clearTimeout(alertTimer.current);
+      alertTimer.current = setTimeout(() => setAlerting(false), ALERT_MS);
     }
-    lastId.current = latest.id;
-  }, [latest]);
+    lastId.current = latestId;
+  }, [latestId]);
+
+  useEffect(() => () => clearTimeout(alertTimer.current), []);
+
+  /** 한 줄을 눌렀을 때: 펼쳐져 있으면 무조건 접고(마우스가 올라가 있어도), 접혀 있으면 펼쳐 고정 */
+  const toggle = () => {
+    if (pinned || alerting || hover) {
+      setPinned(false);
+      setAlerting(false);
+      clearTimeout(alertTimer.current);
+      setHover(false);
+    } else {
+      setPinned(true);
+    }
+  };
 
   if (!latest) return null;
   const expanded = pinned || alerting || hover;
@@ -199,7 +215,7 @@ function TopTicker({ logs, error, now }: ViewProps) {
         {/* 한 줄: ● 수정자 · 수정 내용 · 시각 */}
         <Stack
           direction="row"
-          onClick={() => setPinned((p) => !p)}
+          onClick={toggle}
           sx={{ alignItems: 'center', gap: 1, px: 1.5, py: 0.75, cursor: 'pointer', minWidth: 0 }}
           title="눌러서 최근 활동 펼치기/접기"
         >
