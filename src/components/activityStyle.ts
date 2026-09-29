@@ -1,5 +1,24 @@
 import type { ActionType, ActivityLog } from '../firebase/activity';
 
+/** 좁은 곳(최근 활동 패널·한 줄 표시)에 쓰는 짧은 활동 이름 */
+export const SHORT_ACTION: Record<ActionType, string> = {
+  login: '로그인',
+  access_denied: '접근 거부',
+  exam_create: '업로드',
+  exam_replace: '엑셀 교체',
+  exam_open: '자료 열기',
+  exam_save: '저장',
+  exam_restore: '버전 복구',
+  exam_delete: '자료 삭제',
+  print: '인쇄',
+  export_xlsx: 'XLSX',
+  export_gsheets: '구글 시트',
+  download_source: '엑셀 받기',
+  member_add: '사용자 지정',
+  member_role: '권한 변경',
+  member_remove: '사용자 해제',
+};
+
 /** 데이터가 바뀐 저장 — 최근 활동에 세부 수정 내용을 보여주는 활동 */
 const DATA_CHANGE: ReadonlySet<ActionType> = new Set<ActionType>(['exam_save', 'exam_restore', 'exam_replace']);
 

@@ -5,7 +5,7 @@ import HistoryIcon from '@mui/icons-material/History';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import { ACTIONS, subscribeRecentActivity, type ActivityLog } from '../firebase/activity';
-import { ACTION_COLOR, changeDetail, relativeTime } from './activityStyle';
+import { ACTION_COLOR, changeDetail, relativeTime, SHORT_ACTION } from './activityStyle';
 
 const COUNT = 4; // 최신 1건 + 이전 3건
 const PANEL_W = 228;
@@ -62,18 +62,23 @@ function Item({ l, now, highlight, dense }: { l: ActivityLog; now: number; highl
         bgcolor: highlight ? '#f1f8f3' : 'transparent',
       }}
     >
-      <Stack direction="row" sx={{ alignItems: 'center', gap: 0.75 }}>
-        <Typography variant="body2" sx={{ fontWeight: 700, whiteSpace: 'nowrap' }} title={l.email}>
+      {/* 좁은 패널에 한 줄로: 이름은 줄어들며 말줄임, 활동·시간은 고정 폭 */}
+      <Stack direction="row" sx={{ alignItems: 'center', gap: 0.5, minWidth: 0 }}>
+        <Typography
+          sx={{ fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}
+          title={`${l.name || l.email} (${l.email})`}
+        >
           {l.name || l.email}
         </Typography>
         <Chip
           size="small"
           color={ACTION_COLOR[l.action] ?? 'default'}
           variant={ACTION_COLOR[l.action] ? 'filled' : 'outlined'}
-          label={ACTIONS[l.action] ?? l.action}
-          sx={{ height: 18, fontSize: 10.5 }}
+          label={SHORT_ACTION[l.action] ?? ACTIONS[l.action] ?? l.action}
+          title={ACTIONS[l.action]}
+          sx={{ height: 18, fontSize: 10.5, flexShrink: 0, '& .MuiChip-label': { px: 0.75 } }}
         />
-        <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto', whiteSpace: 'nowrap' }}>
+        <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto', pl: 0.5, whiteSpace: 'nowrap', flexShrink: 0 }}>
           {relativeTime(l.at, now)}
         </Typography>
       </Stack>
@@ -232,7 +237,7 @@ function TopTicker({ logs, error, now }: ViewProps) {
             {latest.name || latest.email}
           </Typography>
           <Typography variant="body2" color="text.secondary" noWrap sx={{ minWidth: 0, maxWidth: expanded ? 'none' : 'min(46vw, 420px)', flex: expanded ? 1 : 'none' }}>
-            {changeDetail(latest) ?? ACTIONS[latest.action] ?? latest.action}
+            {changeDetail(latest) ?? SHORT_ACTION[latest.action] ?? latest.action}
           </Typography>
           <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
             {relativeTime(latest.at, now)}
