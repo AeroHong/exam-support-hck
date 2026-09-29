@@ -30,7 +30,7 @@ import { useExamStore } from '../store/examStore';
 import type { AppUser } from '../firebase/auth';
 import { getGoogleAccessToken } from '../firebase/auth';
 import { firebaseConfigured } from '../firebase/app';
-import { saveExam } from '../firebase/repo';
+import { useSaveExam } from '../store/useSaveExam';
 import { IssuesPanel } from '../components/IssuesPanel';
 import { SheetPreview } from '../components/SheetPreview';
 import { PrintRoot } from '../export/print/PrintRoot';
@@ -48,7 +48,8 @@ const MODES: { value: FilterMode; label: string }[] = [
 const KIND_COLOR = { normal: 'default', doum: 'warning', separate: 'secondary', waiting: 'info' } as const;
 
 export function WorkPage({ user }: { user: AppUser }) {
-  const { workbook, rosters, issues, title, sourceFileName, examId, setExamId } = useExamStore();
+  const { workbook, rosters, issues, title, sourceFileName, examId, dirty, setTitle } = useExamStore();
+  const { save } = useSaveExam(user.email);
   const [mode, setMode] = useState<FilterMode>('ALL');
   const [value, setValue] = useState('');
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
@@ -58,9 +59,6 @@ export function WorkPage({ user }: { user: AppUser }) {
   const [progress, setProgress] = useState<number | null>(null);
   const [gsResult, setGsResult] = useState<GSheetsResult | null>(null);
   const [gsOpen, setGsOpen] = useState(false);
-  const [examTitle, setExamTitle] = useState(title);
-
-  useEffect(() => setExamTitle(title), [title]);
 
   const options = useMemo(() => {
     const uniq = (xs: string[]) => [...new Set(xs)];
@@ -152,13 +150,7 @@ export function WorkPage({ user }: { user: AppUser }) {
     });
   };
 
-  const onSave = () =>
-    run('저장', async () => {
-      const id = (examId ?? examTitle).replace(/\//g, '_').trim() || `exam-${Date.now()}`;
-      await saveExam(id, { title: examTitle, sourceFileName, workbook, createdBy: user.email });
-      setExamId(id);
-      return `'${examTitle}' 자료를 저장했습니다.`;
-    });
+  const onSave = () => run('저장', save);
 
   return (
     <Stack spacing={2}>
@@ -167,16 +159,16 @@ export function WorkPage({ user }: { user: AppUser }) {
           <TextField
             label="시험 이름"
             size="small"
-            value={examTitle}
-            onChange={(e) => setExamTitle(e.target.value)}
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
             sx={{ minWidth: 320 }}
           />
           <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
             {sourceFileName} · {workbook.grades.map((g) => `${g.grade} ${g.students.length}명`).join(', ')} · 시험 {rosters.length}건
           </Typography>
           {firebaseConfigured && user.role === 'admin' && (
-            <Button variant="outlined" startIcon={<SaveIcon />} onClick={onSave}>
-              {examId ? '다시 저장' : '저장'}
+            <Button variant={dirty ? 'contained' : 'outlined'} startIcon={<SaveIcon />} onClick={onSave}>
+              {examId ? (dirty ? '변경 내용 저장' : '저장됨') : '저장'}
             </Button>
           )}
         </Stack>
@@ -326,7 +318,7 @@ export function WorkPage({ user }: { user: AppUser }) {
       {gsOpen && (
         <GSheetsDialog
           open
-          defaultSubfolder={`${examTitle || '응시현황표'} 응시현황표 ${new Date().toLocaleDateString('ko-KR')}`}
+          defaultSubfolder={`${title || '응시현황표'} 응시현황표 ${new Date().toLocaleDateString('ko-KR')}`}
           count={{ subjects: selected.length, sheets: selectedSheets.length }}
           onClose={() => setGsOpen(false)}
           onConfirm={onGSheets}
