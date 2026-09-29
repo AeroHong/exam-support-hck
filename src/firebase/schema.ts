@@ -7,9 +7,14 @@ export const COL = {
   EXAMS: 'exams',
   GRADES: 'grades',
   VACANCIES: 'vacancies',
-  /** 응시현황표 업무 담당자 — evaluationPlanManagers와 같은 패턴(문서가 있으면 담당자) */
+  /** 응시현황표 업무 담당자 — evaluationPlanManagers와 같은 패턴(문서가 있으면 담당자, role로 관리자 구분) */
   EXAM_ROSTER_MANAGERS: 'examRosterManagers',
+  /** 활동 기록 — 추가만 가능, 수정·삭제 불가 */
+  ACTIVITY_LOGS: 'activityLogs',
 } as const;
+
+/** 담당자 문서의 역할: admin(관리자 — 사용자 관리·삭제 가능) / manager(담당교사) */
+export type MemberRole = 'admin' | 'manager';
 
 /** 이메일을 Firestore 문서 ID로 변환 (smart-teachers-office emailToDocId와 동일) */
 export function emailToDocId(email: string): string {

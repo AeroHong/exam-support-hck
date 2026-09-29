@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { after, before, beforeEach, describe, it } from 'node:test';
 import { assertFails, assertSucceeds, initializeTestEnvironment } from '@firebase/rules-unit-testing';
-import { deleteDoc, doc, getDoc, getDocs, collection, setDoc, updateDoc } from 'firebase/firestore';
+import { deleteDoc, doc, getDoc, getDocs, collection, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 
 const SCHOOL = 'seonyoo-hs';
 const emailToDocId = (e) => e.toLowerCase().replace(/\./g, '_').replace(/@/g, '__at__');
@@ -12,6 +12,7 @@ const MANAGER = { uid: 'mgr1', email: 'Teacher.Kim@seonyoo.hs.kr' }; // 대소�
 const STRANGER = { uid: 'x1', email: 'nobody@seonyoo.hs.kr' };
 const OUTSIDER = { uid: 'o1', email: 'someone@gmail.com' };
 const OTHER_ADMIN = { uid: 'admin2', email: 'boss2@seonyoo.hs.kr' }; // 다른 학교 관리자
+const MEMBER_ADMIN = { uid: 'madm', email: 'vice@seonyoo.hs.kr' }; // 사용자 관리에서 관리자로 지정된 교사
 
 let env;
 const as = (u) => env.authenticatedContext(u.uid, { email: u.email, email_verified: true }).firestore();
@@ -32,7 +33,8 @@ beforeEach(async () => {
     const db = ctx.firestore();
     await setDoc(doc(db, 'users', ADMIN.uid), { email: ADMIN.email, role: 'admin', schoolId: SCHOOL });
     await setDoc(doc(db, 'users', OTHER_ADMIN.uid), { email: OTHER_ADMIN.email, role: 'admin', schoolId: 'other-hs' });
-    await setDoc(managerRef(db, MANAGER.email), { email: MANAGER.email.toLowerCase(), name: '', addedBy: ADMIN.uid });
+    await setDoc(managerRef(db, MANAGER.email), { email: MANAGER.email.toLowerCase(), name: '', role: 'manager', addedBy: ADMIN.uid });
+    await setDoc(managerRef(db, MEMBER_ADMIN.email), { email: MEMBER_ADMIN.email, name: '', role: 'admin', addedBy: ADMIN.uid });
     await setDoc(examRef(db), { title: '중간고사' });
     await setDoc(doc(db, 'schools', SCHOOL, 'exams', 'e1', 'grades', '1학년'), { grade: '1학년' });
   });
@@ -54,12 +56,12 @@ describe('관리자', () => {
 });
 
 describe('담당교사', () => {
-  it('시험 자료 읽기·저장, 결번 저장', async () => {
+  it('시험 자료 읽기·저장(결번 포함)', async () => {
     const db = as(MANAGER);
     await assertSucceeds(getDoc(examRef(db)));
-    await assertSucceeds(setDoc(examRef(db), { title: '담당교사 수정' }));
+    await assertSucceeds(setDoc(examRef(db), { title: '담당교사 수정', vacancies: [] }));
     await assertSucceeds(setDoc(doc(db, 'schools', SCHOOL, 'exams', 'e1', 'grades', '1학년'), { grade: '1학년', x: 1 }));
-    await assertSucceeds(setDoc(doc(db, 'schools', SCHOOL, 'vacancies', '2026'), { items: [] }));
+    await assertSucceeds(setDoc(doc(db, 'schools', SCHOOL, 'exams', 'new1'), { title: '새 시험' }));
   });
   it('시험 자료 삭제는 안 됨', async () => {
     await assertFails(deleteDoc(examRef(as(MANAGER))));
@@ -69,10 +71,57 @@ describe('담당교사', () => {
     await assertFails(setDoc(managerRef(db, 'friend@seonyoo.hs.kr'), { email: 'friend@seonyoo.hs.kr' }));
     await assertFails(deleteDoc(managerRef(db, MANAGER.email)));
   });
-  it('본인 문서에 uid·이름·접속 시각만 기록 가능', async () => {
+  it('본인 문서에 uid·이름·접속 시각만 기록 가능, 스스로 관리자 승격 불가', async () => {
     const db = as(MANAGER);
     await assertSucceeds(updateDoc(managerRef(db, MANAGER.email), { uid: MANAGER.uid, name: '김선생', lastLoginAt: new Date() }));
     await assertFails(updateDoc(managerRef(db, MANAGER.email), { email: 'hijack@seonyoo.hs.kr' }));
+    await assertFails(updateDoc(managerRef(db, MANAGER.email), { role: 'admin' }));
+  });
+});
+
+describe('사용자 관리에서 관리자로 지정된 교사', () => {
+  it('다른 사용자 지정·권한 변경·해제, 시험 자료 삭제', async () => {
+    const db = as(MEMBER_ADMIN);
+    await assertSucceeds(setDoc(managerRef(db, 'new@seonyoo.hs.kr'), { email: 'new@seonyoo.hs.kr', role: 'manager' }));
+    await assertSucceeds(updateDoc(managerRef(db, MANAGER.email), { role: 'admin' }));
+    await assertSucceeds(deleteDoc(managerRef(db, 'new@seonyoo.hs.kr')));
+    await assertSucceeds(deleteDoc(examRef(db)));
+  });
+  it('이상한 역할 값은 거부', async () => {
+    await assertFails(setDoc(managerRef(as(MEMBER_ADMIN), 'x@seonyoo.hs.kr'), { email: 'x@seonyoo.hs.kr', role: 'superuser' }));
+  });
+});
+
+describe('활동 기록', () => {
+  const logsCol = (db) => collection(db, 'schools', SCHOOL, 'activityLogs');
+  const entry = (u, extra = {}) => ({
+    action: 'print', summary: '인쇄', details: [], examId: 'e1', examTitle: '중간고사',
+    uid: u.uid, email: u.email.toLowerCase(), name: '', at: serverTimestamp(), ...extra,
+  });
+
+  it('사용자는 본인 이름·서버 시각으로 추가하고, 기록을 볼 수 있다', async () => {
+    const db = as(MANAGER);
+    await assertSucceeds(setDoc(doc(logsCol(db), 'l1'), entry(MANAGER)));
+    await assertSucceeds(getDocs(logsCol(db)));
+  });
+  it('남의 이름·가짜 시각·추가 필드로는 못 쓴다', async () => {
+    const db = as(MANAGER);
+    await assertFails(setDoc(doc(logsCol(db), 'l2'), entry(MANAGER, { uid: ADMIN.uid })));
+    await assertFails(setDoc(doc(logsCol(db), 'l3'), entry(MANAGER, { email: ADMIN.email })));
+    await assertFails(setDoc(doc(logsCol(db), 'l4'), entry(MANAGER, { at: new Date('2020-01-01') })));
+    await assertFails(setDoc(doc(logsCol(db), 'l5'), entry(MANAGER, { hidden: true })));
+  });
+  it('관리자도 기록을 고치거나 지울 수 없다', async () => {
+    await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), 'schools', SCHOOL, 'activityLogs', 'fixed'), { action: 'print' }));
+    const db = as(ADMIN);
+    await assertFails(updateDoc(doc(logsCol(db), 'fixed'), { summary: '조작' }));
+    await assertFails(deleteDoc(doc(logsCol(db), 'fixed')));
+  });
+  it('지정되지 않은 계정은 접근 거부 기록만 남길 수 있고, 기록을 못 본다', async () => {
+    const db = as(STRANGER);
+    await assertSucceeds(setDoc(doc(logsCol(db), 'd1'), entry(STRANGER, { action: 'access_denied', examId: null, examTitle: '' })));
+    await assertFails(setDoc(doc(logsCol(db), 'd2'), entry(STRANGER)));
+    await assertFails(getDocs(logsCol(db)));
   });
 });
 
@@ -82,7 +131,6 @@ describe('지정되지 않은 학교 계정', () => {
     await assertFails(getDoc(examRef(db)));
     await assertFails(setDoc(examRef(db), { title: '해킹' }));
     await assertFails(getDocs(collection(db, 'schools', SCHOOL, 'examRosterManagers')));
-    await assertFails(getDoc(doc(db, 'schools', SCHOOL, 'vacancies', '2026')));
   });
   it('자기 자신을 담당교사로 등록 불가', async () => {
     const db = as(STRANGER);

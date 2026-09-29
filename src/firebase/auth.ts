@@ -9,6 +9,7 @@ import {
 import { doc, getDoc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import { ALLOWED_DOMAIN, auth, db, SCHOOL_ID } from './app';
 import { ADMIN_ROLES, COL, emailToDocId, USERS } from './schema';
+import { logActivity } from './activity';
 
 const DRIVE_SCOPES = [
   'https://www.googleapis.com/auth/drive.file',
@@ -16,8 +17,9 @@ const DRIVE_SCOPES = [
 ];
 
 /**
- * admin   — 학교 관리자(users.role이 admin/school_admin): 모든 기능 + 사용자 관리·자료 삭제
- * manager — 응시현황표 담당교사(examRosterManagers에 지정됨): 삭제 외 모든 기능
+ * admin   — 관리자: users.role이 admin/school_admin(계정 관리자) 또는 examRosterManagers.role이 admin
+ *           모든 기능 + 사용자·권한 관리·자료 삭제
+ * manager — 담당교사: examRosterManagers에 지정됨, 삭제 외 모든 기능
  */
 export type Role = 'admin' | 'manager';
 export interface AppUser {
@@ -72,15 +74,20 @@ async function resolveAccess(u: User): Promise<AppUser | DeniedUser> {
   const managerSnap = await getDoc(managerRef).catch(() => null);
   if (managerSnap?.exists()) {
     updateDoc(managerRef, { uid: u.uid, name, lastLoginAt: serverTimestamp() }).catch(() => {});
-    return { uid: u.uid, email, name, role: 'manager' };
+    return { uid: u.uid, email, name, role: managerSnap.data().role === 'admin' ? 'admin' : 'manager' };
   }
   return { email, name };
 }
 
+// 새로고침마다 로그인 기록이 쌓이지 않도록, 직접 로그인 버튼을 눌렀을 때만 기록한다
+let justSignedIn = false;
+
 export async function signIn(): Promise<void> {
   if (!auth) return;
+  justSignedIn = true;
   const cred = await signInWithPopup(auth, provider(false));
   if (!domainOk(cred.user.email)) {
+    justSignedIn = false;
     await fbSignOut(auth);
     throw domainError();
   }
@@ -129,8 +136,14 @@ export function useAuth() {
           return;
         }
         const access = await resolveAccess(u);
-        if ('role' in access) setUser(access);
-        else setDenied(access);
+        if ('role' in access) {
+          setUser(access);
+          if (justSignedIn) logActivity({ action: 'login', summary: `${access.role === 'admin' ? '관리자' : '담당교사'} 로그인` });
+        } else {
+          setDenied(access);
+          logActivity({ action: 'access_denied', summary: `지정되지 않은 계정의 접근 시도: ${access.email}` });
+        }
+        justSignedIn = false;
       } catch (e) {
         setError((e as Error).message);
       } finally {

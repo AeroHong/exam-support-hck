@@ -9,3 +9,4 @@ export * from './filter';
 export * from './summary';
 export * from './editWorkbook';
 export * from './exportWorkbook';
+export * from './diffWorkbook';

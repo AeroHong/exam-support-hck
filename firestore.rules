@@ -1,7 +1,8 @@
 rules_version = '2';
 // 권한 구조는 smart-teachers-office와 같다.
-//   users/{uid}.role·schoolId  → 학교 관리자 판정 (isSchoolAdmin)
-//   schools/{id}/examRosterManagers/{emailToDocId} → 응시현황표 담당교사 (문서가 있으면 담당자)
+//   users/{uid}.role·schoolId  → 학교(계정) 관리자 판정 (isSchoolAdmin)
+//   schools/{id}/examRosterManagers/{emailToDocId} → 응시현황표 사용자 (문서가 있으면 사용자, role: admin|manager)
+//   schools/{id}/activityLogs  → 활동 기록 (추가만, 수정·삭제 불가)
 // 로그인 허용 도메인은 .env의 VITE_ALLOWED_DOMAIN과 같아야 한다.
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -29,7 +30,14 @@ service cloud.firestore {
       return inDomain()
         && exists(/databases/$(database)/documents/schools/$(schoolId)/examRosterManagers/$(myEmailDocId()));
     }
-    // 응시현황표 사용자 = 학교 관리자 또는 담당교사
+    function myMember(schoolId) {
+      return get(/databases/$(database)/documents/schools/$(schoolId)/examRosterManagers/$(myEmailDocId())).data;
+    }
+    // 응시현황표 관리자 = 계정 관리자 또는 사용자 관리에서 관리자로 지정된 사람
+    function isRosterAdmin(schoolId) {
+      return isSchoolAdmin(schoolId) || (isExamRosterManager(schoolId) && myMember(schoolId).get('role', 'manager') == 'admin');
+    }
+    // 응시현황표 사용자 = 관리자 또는 담당교사
     function canUseExamRoster(schoolId) { return isSchoolAdmin(schoolId) || isExamRosterManager(schoolId); }
 
     // 계정: 본인 문서만. 처음 만들 때 role은 teacher로만, role·schoolId는 본인이 바꿀 수 없음(관리자 지정은 콘솔).
@@ -46,28 +54,38 @@ service cloud.firestore {
     match /schools/{schoolId} {
       allow get: if canUseExamRoster(schoolId);
 
-      // 담당교사 목록 — 사용자는 누가 담당인지 볼 수 있고, 지정·해제는 관리자만.
-      // 담당교사 본인은 첫 로그인 때 uid·이름·접속 시각만 기록할 수 있다.
+      // 사용자 목록 — 사용자는 누가 담당인지 볼 수 있고, 지정·해제·권한 변경은 관리자만.
+      // 본인은 로그인 때 uid·이름·접속 시각만 기록할 수 있다(역할은 못 바꿈).
       match /examRosterManagers/{emailId} {
         allow get: if inDomain() && (emailId == myEmailDocId() || canUseExamRoster(schoolId));
         allow list: if canUseExamRoster(schoolId);
-        allow create, delete: if isSchoolAdmin(schoolId);
-        allow update: if isSchoolAdmin(schoolId)
+        allow create: if isRosterAdmin(schoolId) && request.resource.data.get('role', 'manager') in ['admin', 'manager'];
+        allow delete: if isRosterAdmin(schoolId);
+        allow update: if (isRosterAdmin(schoolId) && request.resource.data.get('role', 'manager') in ['admin', 'manager'])
           || (inDomain() && emailId == myEmailDocId()
               && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['uid', 'name', 'lastLoginAt']));
       }
 
-      match /exams/{examId} {
-        allow read, create, update: if canUseExamRoster(schoolId);
-        allow delete: if isSchoolAdmin(schoolId);
-        match /grades/{grade} {
-          allow read, create, update: if canUseExamRoster(schoolId);
-          allow delete: if isSchoolAdmin(schoolId);
-        }
+      // 활동 기록 — 본인 이름으로만, 서버 시각으로만 추가. 한 번 쓰면 수정·삭제 불가.
+      // 지정되지 않은 계정도 '접근 거부' 기록 하나는 남길 수 있다(관리자가 누가 들어오려 했는지 보도록).
+      match /activityLogs/{logId} {
+        allow read: if canUseExamRoster(schoolId);
+        allow create: if inDomain()
+          && (canUseExamRoster(schoolId) || request.resource.data.action == 'access_denied')
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.email == myEmail()
+          && request.resource.data.at == request.time
+          && request.resource.data.keys().hasOnly(['action', 'summary', 'details', 'examId', 'examTitle', 'uid', 'email', 'name', 'at']);
+        allow update, delete: if false;
       }
 
-      match /vacancies/{year} {
-        allow read, write: if canUseExamRoster(schoolId);
+      match /exams/{examId} {
+        allow read, create, update: if canUseExamRoster(schoolId);
+        allow delete: if isRosterAdmin(schoolId);
+        match /grades/{grade} {
+          allow read, create, update: if canUseExamRoster(schoolId);
+          allow delete: if isRosterAdmin(schoolId);
+        }
       }
     }
   }

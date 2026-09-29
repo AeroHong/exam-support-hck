@@ -1,11 +1,18 @@
 import { create } from 'zustand';
 import type { Issue, ParsedWorkbook, SubjectRoster, VacancyItem } from '../core';
-import { buildRosters, findConflicts, parseWorkbook, validatePlan } from '../core';
+import { buildRosters, findConflicts, validatePlan } from '../core';
 
 const HISTORY_LIMIT = 50;
 
+/** 마지막으로 저장된 상태 — 저장할 때 무엇이 바뀌었는지 비교해 활동 기록에 남긴다 */
+export interface SavedSnapshot {
+  workbook: ParsedWorkbook;
+  title: string;
+  vacancies: VacancyItem[];
+}
+
 interface ExamState {
-  examId: string | null; // Firestore 문서 ID (저장 전이면 null)
+  examId: string | null; // Firestore 문서 ID (로컬 모드는 'local')
   title: string;
   sourceFileName: string;
   workbook: ParsedWorkbook | null;
@@ -13,16 +20,17 @@ interface ExamState {
   rosters: SubjectRoster[];
   issues: Issue[];
   dirty: boolean; // 저장 후 수정한 내용이 있는지
+  saved: SavedSnapshot | null;
   history: ParsedWorkbook[]; // 되돌리기용 이전 상태
-  loadFile: (file: File) => Promise<void>;
-  setWorkbook: (wb: ParsedWorkbook, meta: { title: string; sourceFileName: string; examId: string | null }) => void;
+  /** 시험 자료 열기(저장된 상태로) */
+  openExam: (examId: string, data: { title: string; sourceFileName: string; workbook: ParsedWorkbook; vacancies: VacancyItem[] }) => void;
   /** 데이터 수정 — editWorkbook.ts의 순수 함수를 넘긴다 */
   edit: (fn: (wb: ParsedWorkbook) => ParsedWorkbook) => void;
   undo: () => void;
-  markSaved: (examId: string) => void;
   setTitle: (title: string) => void;
   setVacancies: (v: VacancyItem[]) => void;
-  reset: () => void;
+  markSaved: (examId: string) => void;
+  close: () => void;
 }
 
 function compute(wb: ParsedWorkbook | null, vacancies: VacancyItem[]) {
@@ -42,16 +50,18 @@ export const useExamStore = create<ExamState>((set, get) => ({
   rosters: [],
   issues: [],
   dirty: false,
+  saved: null,
   history: [],
 
-  async loadFile(file) {
-    const wb = parseWorkbook(new Uint8Array(await file.arrayBuffer()));
-    get().setWorkbook(wb, { title: titleFromFileName(file.name), sourceFileName: file.name, examId: null });
-    set({ dirty: true }); // 새로 올린 파일은 아직 저장 전
-  },
-
-  setWorkbook(wb, meta) {
-    set({ workbook: wb, ...meta, ...compute(wb, get().vacancies), dirty: false, history: [] });
+  openExam(examId, data) {
+    set({
+      examId,
+      ...data,
+      ...compute(data.workbook, data.vacancies),
+      dirty: false,
+      history: [],
+      saved: { workbook: data.workbook, title: data.title, vacancies: data.vacancies },
+    });
   },
 
   edit(fn) {
@@ -73,15 +83,16 @@ export const useExamStore = create<ExamState>((set, get) => ({
     set({ title, dirty: true });
   },
 
-  markSaved(examId) {
-    set({ examId, dirty: false });
-  },
-
   setVacancies(v) {
-    set({ vacancies: v, ...compute(get().workbook, v) });
+    set({ vacancies: v, ...compute(get().workbook, v), dirty: true });
   },
 
-  reset() {
-    set({ examId: null, title: '', sourceFileName: '', workbook: null, rosters: [], issues: [], dirty: false, history: [] });
+  markSaved(examId) {
+    const { workbook, title, vacancies } = get();
+    set({ examId, dirty: false, saved: workbook ? { workbook, title, vacancies } : null });
+  },
+
+  close() {
+    set({ examId: null, title: '', sourceFileName: '', workbook: null, vacancies: [], rosters: [], issues: [], dirty: false, saved: null, history: [] });
   },
 }));

@@ -5,12 +5,13 @@ import { firebaseConfigured } from './firebase/app';
 import { signOut, useAuth, type AppUser } from './firebase/auth';
 import { LoginPage } from './pages/LoginPage';
 import { HomePage } from './pages/HomePage';
+import { ExamLayout } from './pages/ExamLayout';
+import { EditPage } from './pages/EditPage';
 import { WorkPage } from './pages/WorkPage';
 import { VacancyPage } from './pages/VacancyPage';
-import { EditPage } from './pages/EditPage';
 import { UsersPage } from './pages/UsersPage';
+import { ActivityPage } from './pages/ActivityPage';
 import { NoAccessPage } from './pages/NoAccessPage';
-import { SaveButton } from './components/SaveButton';
 import { useExamStore } from './store/examStore';
 
 /** Firebase 미설정(로컬 모드)일 때 쓰는 가상 사용자 */
@@ -41,11 +42,13 @@ export function App() {
 
   const me = user ?? LOCAL_USER;
   const nav = [
-    { to: '/', label: '시험 자료' },
-    { to: '/edit', label: '데이터 수정' },
-    { to: '/work', label: '응시현황표' },
-    { to: '/vacancies', label: '결번 관리' },
-    ...(firebaseConfigured && me.role === 'admin' ? [{ to: '/users', label: '사용자 관리' }] : []),
+    { to: '/', label: '시험 자료', active: location.pathname === '/' || location.pathname.startsWith('/exams/') },
+    ...(firebaseConfigured
+      ? [
+          { to: '/activity', label: '활동 기록', active: location.pathname === '/activity' },
+          ...(me.role === 'admin' ? [{ to: '/users', label: '사용자 관리', active: location.pathname === '/users' }] : []),
+        ]
+      : []),
   ];
 
   return (
@@ -56,18 +59,11 @@ export function App() {
             📝 응시현황표 제작
           </Typography>
           {nav.map((n) => (
-            <Button
-              key={n.to}
-              component={RouterLink}
-              to={n.to}
-              color={location.pathname === n.to ? 'primary' : 'inherit'}
-              sx={{ fontWeight: location.pathname === n.to ? 700 : 400 }}
-            >
+            <Button key={n.to} component={RouterLink} to={n.to} color={n.active ? 'primary' : 'inherit'} sx={{ fontWeight: n.active ? 700 : 400 }}>
               {n.label}
             </Button>
           ))}
           <Box sx={{ flex: 1 }} />
-          {firebaseConfigured && <SaveButton userEmail={me.email} />}
           <Typography variant="body2" color="text.secondary">
             {me.name}
             {firebaseConfigured ? (me.role === 'admin' ? ' (관리자)' : ' (담당교사)') : ''}
@@ -83,9 +79,13 @@ export function App() {
       <Box sx={{ p: { xs: 2, md: 3 }, maxWidth: 1400, mx: 'auto' }}>
         <Routes>
           <Route path="/" element={<HomePage user={me} />} />
-          <Route path="/edit" element={<EditPage user={me} />} />
-          <Route path="/work" element={<WorkPage user={me} />} />
-          <Route path="/vacancies" element={<VacancyPage user={me} />} />
+          <Route path="/exams/:examId" element={<ExamLayout user={me} />}>
+            <Route index element={<Navigate to="edit" replace />} />
+            <Route path="edit" element={<EditPage user={me} />} />
+            <Route path="work" element={<WorkPage user={me} />} />
+            <Route path="vacancies" element={<VacancyPage user={me} />} />
+          </Route>
+          <Route path="/activity" element={<ActivityPage />} />
           <Route path="/users" element={<UsersPage user={me} />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

@@ -1,28 +1,24 @@
-import { useEffect, useState } from 'react';
-import { Navigate, useNavigate } from 'react-router';
-import { Alert, Box, Button, Chip, Paper, Stack, Tab, Tabs, TextField, Typography } from '@mui/material';
-import UndoIcon from '@mui/icons-material/Undo';
+import { useEffect, useRef, useState } from 'react';
+import { Alert, Box, Button, Paper, Stack, Tab, Tabs, Typography } from '@mui/material';
 import DownloadIcon from '@mui/icons-material/Download';
-import SaveIcon from '@mui/icons-material/Save';
-import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
+import UploadFileIcon from '@mui/icons-material/UploadFile';
 import type { AppUser } from '../firebase/auth';
 import { firebaseConfigured } from '../firebase/app';
+import { logActivity } from '../firebase/activity';
+import { saveExam } from '../firebase/repo';
 import { useExamStore } from '../store/examStore';
-import { useSaveExam } from '../store/useSaveExam';
-import { exportWorkbook } from '../core';
+import { diffWorkbook, exportWorkbook, parseWorkbook } from '../core';
 import { IssuesPanel } from '../components/IssuesPanel';
 import { GradeEditor } from '../components/GradeEditor';
 import { PlanEditor } from '../components/PlanEditor';
 
-/** 올린 응시현황 엑셀(시험 계획·학년별 명렬)을 웹에서 고치는 화면 */
+/** 시험 자료의 원본 데이터(시험 계획·학년별 명렬)를 웹에서 고치는 화면 */
 export function EditPage({ user }: { user: AppUser }) {
-  const navigate = useNavigate();
-  const { workbook, issues, title, sourceFileName, dirty, history, edit, undo, setTitle, examId } = useExamStore();
-  const { save, saving } = useSaveExam(user.email);
+  const { workbook, issues, title, examId, vacancies, saved, edit, undo, openExam } = useExamStore();
   const [tab, setTab] = useState('plan');
-  const [msg, setMsg] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
-  // 관리자·담당교사 모두 수정 가능 (지정되지 않은 계정은 로그인 단계에서 막힌다)
-  const canEdit = !firebaseConfigured || user.role === 'admin' || user.role === 'manager';
+  const [msg, setMsg] = useState<{ kind: 'success' | 'error' | 'info'; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   // Ctrl+Z 되돌리기 (입력칸에서 글자 되돌리기는 브라우저 기본 동작 유지)
   useEffect(() => {
@@ -40,24 +36,45 @@ export function EditPage({ user }: { user: AppUser }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [undo]);
 
-  if (!workbook) return <Navigate to="/" replace />;
+  if (!workbook || !examId) return null;
 
   const download = () => {
     const blob = new Blob([exportWorkbook(workbook)], {
       type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     });
+    const fileName = `${title || '응시현황'} 응시현황(수정).xlsx`.replace(/[\\/:*?"<>|]/g, '_');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `${title || '응시현황'} 응시현황(수정).xlsx`.replace(/[\\/:*?"<>|]/g, '_');
+    a.download = fileName;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    logActivity({ action: 'download_source', examId, examTitle: title, summary: fileName });
   };
 
-  const onSave = async () => {
+  /** 새 엑셀 파일로 이 시험 자료의 데이터를 통째로 바꾼다 (바로 저장·기록) */
+  const replace = async (file: File | undefined) => {
+    if (!file) return;
+    if (!window.confirm(`'${file.name}' 파일 내용으로 이 시험 자료의 시험 계획·명렬을 모두 바꿀까요?\n(저장하지 않은 수정 내용은 사라집니다. 결번 목록은 유지됩니다.)`)) return;
+    setBusy(true);
+    setMsg(null);
     try {
-      setMsg({ kind: 'success', text: await save() });
+      const next = parseWorkbook(new Uint8Array(await file.arrayBuffer()));
+      const diff = diffWorkbook(saved?.workbook ?? null, next);
+      if (firebaseConfigured) {
+        await saveExam(examId, { title, sourceFileName: file.name, workbook: next, vacancies }, user.email, (id) => ({
+          action: 'exam_replace',
+          examId: id,
+          examTitle: title,
+          summary: `${file.name}로 교체 — ${diff.summary}`,
+          details: diff.lines,
+        }));
+      }
+      openExam(examId, { title, sourceFileName: file.name, workbook: next, vacancies });
+      setMsg({ kind: 'success', text: `'${file.name}'로 교체했습니다 — ${diff.summary}` });
     } catch (e) {
-      setMsg({ kind: 'error', text: `저장 실패: ${(e as Error).message}` });
+      setMsg({ kind: 'error', text: `교체 실패: ${(e as Error).message}` });
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -66,41 +83,29 @@ export function EditPage({ user }: { user: AppUser }) {
 
   return (
     <Stack spacing={2}>
-      {/* 스크롤해도 저장·되돌리기가 보이도록 메뉴바 아래에 고정 */}
-      <Paper variant="outlined" sx={{ p: 2, position: 'sticky', top: 56, zIndex: 5, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} sx={{ alignItems: { md: 'center' } }}>
-          <TextField label="시험 이름" size="small" value={title} disabled={!canEdit} onChange={(e) => setTitle(e.target.value)} sx={{ minWidth: 300 }} />
-          <Typography variant="body2" color="text.secondary">
-            {sourceFileName}
-          </Typography>
-          {dirty ? <Chip size="small" color="warning" label="저장 안 된 변경 있음" /> : examId && <Chip size="small" color="success" variant="outlined" label="저장됨" />}
-          <Box sx={{ flex: 1 }} />
-          <Button startIcon={<UndoIcon />} disabled={!history.length} onClick={undo}>
-            되돌리기{history.length ? ` (${history.length})` : ''}
-          </Button>
-          <Button startIcon={<DownloadIcon />} onClick={download}>
-            엑셀로 내려받기
-          </Button>
-          {firebaseConfigured && canEdit && (
-            <Button variant={dirty ? 'contained' : 'outlined'} startIcon={<SaveIcon />} disabled={saving} onClick={onSave} title="Ctrl+S" sx={{ minWidth: 100 }}>
-              {saving ? '저장 중…' : dirty ? '저장' : '저장됨'}
-            </Button>
-          )}
-          <Button endIcon={<ArrowForwardIcon />} onClick={() => navigate('/work')}>
-            응시현황표
-          </Button>
-        </Stack>
-        {!canEdit && (
-          <Alert severity="info" sx={{ mt: 2 }}>
-            보기 전용입니다. 수정은 관리자만 할 수 있습니다.
-          </Alert>
-        )}
-        {msg && (
-          <Alert severity={msg.kind} sx={{ mt: 2 }} onClose={() => setMsg(null)}>
-            {msg.text}
-          </Alert>
-        )}
-      </Paper>
+      <Stack direction="row" spacing={1} sx={{ justifyContent: 'flex-end' }}>
+        <Button size="small" startIcon={<DownloadIcon />} onClick={download}>
+          엑셀로 내려받기
+        </Button>
+        <Button size="small" startIcon={<UploadFileIcon />} disabled={busy} onClick={() => fileRef.current?.click()}>
+          엑셀 파일로 교체
+        </Button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".xlsx,.xls"
+          hidden
+          onChange={(e) => {
+            replace(e.target.files?.[0]);
+            e.target.value = '';
+          }}
+        />
+      </Stack>
+      {msg && (
+        <Alert severity={msg.kind} onClose={() => setMsg(null)}>
+          {msg.text}
+        </Alert>
+      )}
 
       <IssuesPanel issues={issues} />
 
@@ -112,14 +117,16 @@ export function EditPage({ user }: { user: AppUser }) {
           ))}
         </Tabs>
         {tab === 'plan' ? (
-          <PlanEditor workbook={workbook} canEdit={canEdit} onEdit={edit} />
+          <PlanEditor workbook={workbook} canEdit onEdit={edit} />
         ) : (
-          sheet && <GradeEditor key={sheet.grade} sheet={sheet} canEdit={canEdit} onEdit={edit} />
+          sheet && <GradeEditor key={sheet.grade} sheet={sheet} canEdit onEdit={edit} />
         )}
         {errorCount > 0 && (
-          <Typography variant="caption" color="error" sx={{ display: 'block', mt: 1 }}>
-            오류 {errorCount}건이 있는 시험은 현황표를 만들지 않습니다. 위 '데이터 검증'을 확인하세요.
-          </Typography>
+          <Box sx={{ mt: 1 }}>
+            <Typography variant="caption" color="error">
+              오류 {errorCount}건이 있는 시험은 현황표를 만들지 않습니다. 위 '데이터 검증'을 확인하세요.
+            </Typography>
+          </Box>
         )}
       </Paper>
     </Stack>

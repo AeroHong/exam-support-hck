@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Navigate } from 'react-router';
 import {
   Alert,
   Box,
@@ -23,14 +22,13 @@ import {
 import PrintIcon from '@mui/icons-material/Print';
 import GridOnIcon from '@mui/icons-material/GridOn';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
-import SaveIcon from '@mui/icons-material/Save';
 import type { RoomSheet } from '../core';
 import { filterRosters, type FilterMode } from '../core';
 import { useExamStore } from '../store/examStore';
 import type { AppUser } from '../firebase/auth';
 import { getGoogleAccessToken } from '../firebase/auth';
 import { firebaseConfigured } from '../firebase/app';
-import { useSaveExam } from '../store/useSaveExam';
+import { logActivity, type ActionType } from '../firebase/activity';
 import { IssuesPanel } from '../components/IssuesPanel';
 import { SheetPreview } from '../components/SheetPreview';
 import { PrintRoot } from '../export/print/PrintRoot';
@@ -47,9 +45,8 @@ const MODES: { value: FilterMode; label: string }[] = [
 
 const KIND_COLOR = { normal: 'default', doum: 'warning', separate: 'secondary', waiting: 'info' } as const;
 
-export function WorkPage({ user }: { user: AppUser }) {
-  const { workbook, rosters, issues, title, sourceFileName, examId, dirty, setTitle } = useExamStore();
-  const { save } = useSaveExam(user.email);
+export function WorkPage(_: { user: AppUser }) {
+  const { workbook, rosters, issues, title, examId } = useExamStore();
   const [mode, setMode] = useState<FilterMode>('ALL');
   const [value, setValue] = useState('');
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
@@ -101,7 +98,7 @@ export function WorkPage({ user }: { user: AppUser }) {
     };
   }, [printing]);
 
-  if (!workbook) return <Navigate to="/" replace />;
+  if (!workbook || !examId) return null;
 
   const labelOf = (key: string) => {
     const r = rosters.find((x) => x.subjectKey === key);
@@ -128,12 +125,30 @@ export function WorkPage({ user }: { user: AppUser }) {
     }
   };
 
+  /** 무엇을 출력했는지 활동 기록에 남긴다 (범위 + 과목별 고사실 목록) */
+  const record = (action: ActionType, extra = '') => {
+    const scope = mode === 'ALL' ? '전체' : `${MODES.find((m) => m.value === mode)?.label} ${mode === 'SUBJECT' ? labelOf(value) : value}`;
+    logActivity({
+      action,
+      examId,
+      examTitle: title,
+      summary: `${scope} · ${selected.length}과목 ${selectedSheets.length}장${extra}`,
+      details: selected.map((r) => `${r.dateStr} ${r.period}교시 ${r.grade} ${r.subject} — ${r.sheets.map((s) => s.roomName).join(', ')}`),
+    });
+  };
+
+  const onPrint = () => {
+    setPrinting(selectedSheets);
+    record('print');
+  };
+
   const onXlsx = () =>
     run('XLSX 만들기', async () => {
       // ExcelJS가 커서 누를 때만 불러온다
       const { exportRostersToFile, downloadBlob } = await import('../export/xlsx');
       const { blob, fileName } = await exportRostersToFile(selected);
       downloadBlob(blob, fileName);
+      record('export_xlsx', ` · ${fileName}`);
       return `${fileName} 다운로드 (${selected.length}과목, ${selectedSheets.length}장)`;
     });
 
@@ -146,34 +161,13 @@ export function WorkPage({ user }: { user: AppUser }) {
       setProgress(0);
       const res = await exportToGoogleSheets(token, selected, target, (d, t) => setProgress((d / t) * 100));
       setGsResult(res);
+      record('export_gsheets', ` · ${res.folderUrl}`);
       return `Google Drive에 ${res.files.length}개 파일을 만들었습니다.`;
     });
   };
 
-  const onSave = () => run('저장', save);
-
   return (
     <Stack spacing={2}>
-      <Paper variant="outlined" sx={{ p: 2 }}>
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ alignItems: { md: 'center' } }}>
-          <TextField
-            label="시험 이름"
-            size="small"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            sx={{ minWidth: 320 }}
-          />
-          <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
-            {sourceFileName} · {workbook.grades.map((g) => `${g.grade} ${g.students.length}명`).join(', ')} · 시험 {rosters.length}건
-          </Typography>
-          {firebaseConfigured && (
-            <Button variant={dirty ? 'contained' : 'outlined'} startIcon={<SaveIcon />} onClick={onSave}>
-              {examId ? (dirty ? '변경 내용 저장' : '저장됨') : '저장'}
-            </Button>
-          )}
-        </Stack>
-      </Paper>
-
       <IssuesPanel issues={issues} />
 
       <Paper variant="outlined" sx={{ p: 2 }}>
@@ -218,7 +212,7 @@ export function WorkPage({ user }: { user: AppUser }) {
           <Typography variant="body2" color="text.secondary">
             선택 {selected.length}과목 · {selectedSheets.length}장
           </Typography>
-          <Button variant="contained" startIcon={<PrintIcon />} disabled={!selectedSheets.length} onClick={() => setPrinting(selectedSheets)}>
+          <Button variant="contained" startIcon={<PrintIcon />} disabled={!selectedSheets.length} onClick={onPrint}>
             인쇄 / PDF
           </Button>
           <Button variant="outlined" startIcon={<GridOnIcon />} disabled={!selected.length} onClick={onXlsx}>
