@@ -240,7 +240,7 @@ export function GradeEditor({ sheet, canEdit, onEdit, focus }: Props) {
           .map(([k, v]) => (
             <Chip key={k} size="small" label={k === 'unrecognized' ? '확인 필요' : v!.label} sx={{ bgcolor: v!.bg, color: v!.color, height: 22 }} />
           ))}
-        <Tooltip title="칸을 클릭하고 바로 입력하거나 Enter로 수정합니다. 방향키로 이동, Delete로 지우기, 엑셀에서 복사한 범위를 Ctrl+V로 붙여넣을 수 있습니다. Ctrl+Z로 되돌립니다.">
+        <Tooltip title="칸을 고르고 Enter를 누르면 수정 상태, 다시 Enter를 누르면 수정 완료입니다(Esc는 취소). 바로 입력하면 새 값으로 바뀝니다. 방향키·Tab으로 이동, Delete로 지우기, 엑셀에서 복사한 범위를 Ctrl+V로 붙여넣을 수 있습니다. Ctrl+Z로 되돌립니다.">
           <Typography variant="caption" color="primary" sx={{ ml: 1, cursor: 'help', textDecoration: 'underline dotted' }}>
             사용법
           </Typography>

@@ -12,7 +12,7 @@ const PANEL_W = 228;
 const EDGE = 12; // 화면 오른쪽 끝과의 간격
 // 본문(최대 1400px) 옆에 패널을 둘 자리가 있을 때만 옆에 고정(1920px 모니터 포함), 아니면 위쪽 떠 있는 표시
 const WIDE = `(min-width: ${1400 + (PANEL_W + EDGE + 8) * 2}px)`;
-const ALERT_MS = 6000; // 새 활동이 오면 펼쳐 보여주는 시간
+const ALERT_MS = 2000; // 새 활동이 오면 펼쳐 보여주는 시간
 
 /** 최근 활동 — 넓은 화면은 옆 패널, 좁은 화면은 위쪽에 떠 있는 한 줄(새 활동이 오면 잠깐 펼침) */
 export function RecentActivityPanel() {
@@ -196,8 +196,14 @@ function TopTicker({ logs, error, now }: ViewProps) {
         maxWidth: 'calc(100vw - 24px)',
         '@media print': { display: 'none' },
       }}
+      // 마우스를 올리면 바로 펼치고, 펼쳐진 영역을 벗어나면 (고정·새 활동 알림이어도) 바로 닫는다
       onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
+      onMouseLeave={() => {
+        setHover(false);
+        setPinned(false);
+        setAlerting(false);
+        clearTimeout(alertTimer.current);
+      }}
     >
       <Paper
         elevation={0}

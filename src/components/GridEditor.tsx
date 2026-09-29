@@ -31,7 +31,8 @@ const ROW_H = 30;
 
 /**
  * 엑셀처럼 쓰는 편집 표.
- * 방향키 이동, Enter/F2 편집, 바로 입력하면 덮어쓰기, Delete로 지우기, Tab 오른쪽,
+ * 방향키 이동, Enter로 편집 시작 → 다시 Enter로 완료(같은 칸에 머묾), 바로 입력하면 덮어쓰기,
+ * Esc로 편집 취소, Delete로 지우기, Tab 오른쪽,
  * 엑셀에서 복사한 범위 붙여넣기(Ctrl+V), 복사(Ctrl+C).
  */
 export function GridEditor({ columns, rowCount, getText, getStyle, onChange, rowAction, height = '70vh', focus }: Props) {
@@ -119,14 +120,13 @@ export function GridEditor({ columns, rowCount, getText, getStyle, onChange, row
       else if (k === 'ArrowLeft') move(0, -1);
       else if (k === 'ArrowRight') move(0, 1);
       else if (k === 'Tab') move(0, e.shiftKey ? -1 : 1);
-      else if (k === 'Enter') move(1, 0);
-      else if (k === 'F2') setEditing(getText(sel.row, sel.col));
+      else if (k === 'Enter' || k === 'F2') setEditing(getText(sel.row, sel.col)); // Enter → 현재 값으로 편집 시작
       else if (k === 'Delete' || k === 'Backspace') onChange([{ ...sel, text: '' }]);
       else return;
       e.preventDefault();
       return;
     }
-    if (k === 'Enter') commit(1, 0);
+    if (k === 'Enter') commit(0, 0); // 다시 Enter → 수정 완료, 같은 칸에 머묾
     else if (k === 'Tab') commit(0, e.shiftKey ? -1 : 1);
     else if (k === 'Escape') setEditing(null);
     else return;
