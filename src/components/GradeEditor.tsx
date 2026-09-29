@@ -45,9 +45,10 @@ const FIELDS: { key: StudentField; label: string; width: number; numeric?: boole
 ];
 
 /** 셀 값 유형별 색 (고사실 규칙 — src/core/roomCell.ts) */
-const KIND_STYLE: Partial<Record<CellKind | 'excludedText', { bg: string; color?: string; label: string }>> = {
+const KIND_STYLE: Partial<Record<CellKind | 'excludedText' | 'noOwner', { bg: string; color?: string; label: string }>> = {
   doum: { bg: '#fff3e0', color: '#a15c00', label: '도움실' },
   separate: { bg: '#f3e5f5', color: '#6a1b9a', label: '별도실' },
+  noOwner: { bg: '#fffde7', color: '#b26a00', label: '소속 없음(추정)' },
   waiting: { bg: '#e3f2fd', color: '#1565c0', label: '대기실' },
   excludedText: { bg: '#f5f5f5', color: '#9e9e9e', label: '제외(하교 등)' },
   unknownOwner: { bg: '#ffebee', color: '#c62828', label: '소속 미확인(?)' },
@@ -127,8 +128,11 @@ export function GradeEditor({ sheet, canEdit, onEdit }: Props) {
       const v = s?.cells[sheet.headers[col - FIELDS.length]];
       if (v === null || v === undefined) return undefined;
       const parsed = parseRoomCell(v);
-      const st = parsed ? KIND_STYLE[parsed.kind] : KIND_STYLE.excludedText;
-      return st ? { bg: st.bg, color: st.color, title: st.label } : undefined;
+      // 도움실·별도실인데 소속 분반을 안 적었으면 따로 표시 (담임반으로 추정됨)
+      const noOwner = parsed && (parsed.kind === 'doum' || parsed.kind === 'separate') && parsed.owner === null;
+      const st = noOwner ? KIND_STYLE.noOwner : parsed ? KIND_STYLE[parsed.kind] : KIND_STYLE.excludedText;
+      const title = noOwner ? `소속 분반 없음 — 담임반으로 추정합니다. '${parsed!.room}/3-7'처럼 소속을 적어 주세요` : st?.label;
+      return st ? { bg: st.bg, color: st.color, title } : undefined;
     },
     [sheet, visible],
   );
@@ -220,6 +224,9 @@ export function GradeEditor({ sheet, canEdit, onEdit }: Props) {
             사용법
           </Typography>
         </Tooltip>
+        <Typography variant="caption" color="text.secondary" sx={{ ml: 1.5 }}>
+          도움실·별도 고사실은 <b>고사실/소속반</b>으로 적습니다 — 예) 도움실/3-7, 교과7/3-5
+        </Typography>
       </Stack>
 
       {notice && (

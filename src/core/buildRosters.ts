@@ -36,6 +36,9 @@ export function subjectKeyOf(p: PlanRow): string {
 
 const byClassNum = (a: Student, b: Student) => a.ban - b.ban || a.num - b.num;
 
+/** 단독 교과실에 이 인원 이하만 배정되면 별도 고사실이 아닌지 경고 */
+const SMALL_ROOM = 3;
+
 /** "1-2" < "1-10" < "교과3" < 기타 */
 function roomSortKey(name: string): [number, number, number, string] {
   const m = name.match(/^(\d+)-(\d+)$/);
@@ -142,6 +145,31 @@ export function buildRosters(wb: ParsedWorkbook, opts: BuildOptions = {}): Build
       } else if (sp.explicit) {
         const b = bucket(sp.owner, 'normal');
         (sp.kind === 'doum' ? b.doum : b.separate).push(sp.student);
+      }
+    }
+
+    // 소속을 적지 않은 도움실·별도실 — 담임반으로 추정했음을 알리고, '고사실/소속반'으로 적도록 안내
+    const inferred = specials.filter((sp) => !sp.explicit);
+    if (inferred.length > 0) {
+      const sample = inferred
+        .slice(0, 6)
+        .map((sp) => `${makeHakbeon(sp.student.grade, sp.student.ban, sp.student.num)} ${sp.student.name}(${sp.kind === 'doum' ? '도움실' : '별도실'}→${sp.owner} 추정)`);
+      issues.push({
+        level: 'warn',
+        subjectKey,
+        message: `[${label}] 소속 분반이 없는 도움실·별도실 ${inferred.length}명을 담임반으로 추정했습니다. 선택과목이면 '${inferred[0].kind === 'doum' ? '도움실' : '교과7'}/${inferred[0].owner}'처럼 '고사실/소속반'으로 적어 주세요: ${sample.join(', ')}${inferred.length > 6 ? ' …' : ''}`,
+      });
+    }
+
+    // 소속 없이 단독으로 쓴 교과실에 몇 명만 배정 — 실제로는 별도 고사실일 가능성
+    for (const [roomName, b] of rooms) {
+      if (b.kind === 'normal' && !/^\d+-\d+$/.test(roomName) && b.main.length > 0 && b.main.length <= SMALL_ROOM) {
+        const who = b.main.map((s) => `${makeHakbeon(s.grade, s.ban, s.num)} ${s.name}`).join(', ');
+        issues.push({
+          level: 'warn',
+          subjectKey,
+          message: `[${label}] ${roomName}에 ${b.main.length}명만 배정되어 따로 현황표가 만들어집니다(${who}). 별도 고사실이면 '${roomName}/소속반'(예: ${roomName}/3-5)으로 적어 주세요.`,
+        });
       }
     }
 

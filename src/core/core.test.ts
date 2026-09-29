@@ -19,6 +19,23 @@ describe('parseRoomCell', () => {
     expect(parseRoomCell('도움실/?')).toMatchObject({ kind: 'unknownOwner' });
     expect(parseRoomCell('배려자')).toMatchObject({ kind: 'unrecognized' });
   });
+
+  it('고사실/소속 표기 — 별도 고사실·도움실에 소속 분반을 적는다', () => {
+    expect(parseRoomCell('교과7/3-5')).toMatchObject({ kind: 'separate', room: '교과7', owner: '3-5' });
+    expect(parseRoomCell('도움실/3-7')).toMatchObject({ kind: 'doum', room: '도움실', owner: '3-7' });
+    expect(parseRoomCell('3-6/3-5')).toMatchObject({ kind: 'separate', room: '3-6', owner: '3-5' }); // 다른 반 교실을 별도실로
+    expect(parseRoomCell('3-5/3-5')).toMatchObject({ kind: 'normal', room: '3-5' });
+  });
+
+  it('다른 순서·예전 표기도 받는다', () => {
+    expect(parseRoomCell('3-7/도움실')).toMatchObject({ kind: 'doum', room: '도움실', owner: '3-7' });
+    expect(parseRoomCell('3-5/교과7')).toMatchObject({ kind: 'separate', room: '교과7', owner: '3-5' });
+    expect(parseRoomCell('별도실/교과7')).toMatchObject({ kind: 'separate', room: '교과7', owner: null });
+    expect(parseRoomCell('교과7/별도실')).toMatchObject({ kind: 'separate', room: '교과7', owner: null });
+    expect(parseRoomCell('★교과7★')).toMatchObject({ kind: 'separate', room: '교과7', owner: null });
+    expect(parseRoomCell('교과7')).toMatchObject({ kind: 'normal', room: '교과7' }); // 단독 = 일반 고사실
+    expect(parseRoomCell('?/3-5')).toMatchObject({ kind: 'unknownOwner' });
+  });
 });
 
 const fixture = resolve(__dirname, '../../fixtures/2026-2-mid.xlsx');
@@ -63,6 +80,33 @@ describe.skipIf(!existsSync(fixture))('실제 응시현황 파일', () => {
     const doum = sheet('2학년', '세포와물질대사', '도움실').main[0];
     const owner = sheet('2학년', '세포와물질대사', `2-${doum.ban}`);
     if (owner) expect(owner.doum).toContainEqual(doum);
+  });
+
+  it('소속 없는 도움실과 몇 명만 배정된 단독 교과실을 경고한다', () => {
+    const msgs = issues.map((i) => i.message);
+    // 3학년 김민성 1명만 '교과7' (별도 고사실로 보이는데 소속이 없음)
+    expect(msgs.some((m) => m.includes('확률과 통계') && m.includes('교과7에 1명만') && m.includes('교과7/3-5'))).toBe(true);
+    // 2학년 도움실 — 소속 분반 미기재
+    expect(msgs.some((m) => m.includes('미적분') && m.includes('소속 분반이 없는 도움실'))).toBe(true);
+    // 1학년은 '도움실/1-1'처럼 소속이 적혀 있어 경고 없음
+    expect(msgs.some((m) => m.includes('1학년 공통국어2') && m.includes('소속 분반이 없는'))).toBe(false);
+  });
+
+  it('교과7/3-5로 고치면 3-5 현황표의 별도실 칸에 들어가고 경고가 사라진다', () => {
+    const g3 = wb.grades.find((g) => g.grade === '3학년')!;
+    const idx = g3.students.findIndex((s) => s.cells['확률과통계'] === '교과7');
+    const s = g3.students[idx];
+    const fixed = {
+      ...wb,
+      grades: wb.grades.map((g) =>
+        g.grade !== '3학년' ? g : { ...g, students: g.students.map((x, i) => (i === idx ? { ...x, cells: { ...x.cells, 확률과통계: `교과7/3-${s.ban}` } } : x)) },
+      ),
+    };
+    const r = buildRosters(fixed);
+    const subj = r.rosters.find((x) => x.grade === '3학년' && x.subject === '확률과 통계')!;
+    expect(subj.sheets.find((x) => x.roomName === '교과7')).toMatchObject({ kind: 'separate' });
+    expect(subj.sheets.find((x) => x.roomName === `3-${s.ban}`)!.separate.map((x) => x.name)).toContain(s.name);
+    expect(r.issues.some((i) => i.message.includes('확률과 통계') && i.message.includes('교과7에 1명만'))).toBe(false);
   });
 
   it('계획 오류를 경고한다', () => {
