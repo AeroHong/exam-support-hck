@@ -182,7 +182,7 @@ function sheetRequests(firstSheetId: number, sheet: RoomSheet, isFirst: boolean)
       requests.push({
         repeatCell: {
           range: range(sid, notesRow + i, 6, notesRow + i + 1, 9),
-          cell: { userEnteredFormat: { horizontalAlignment: 'LEFT', verticalAlignment: 'MIDDLE', textFormat: { bold: true, fontSize: 9, foregroundColor: rgb(C.ink) } } },
+          cell: { userEnteredFormat: { horizontalAlignment: 'LEFT', verticalAlignment: 'MIDDLE', textFormat: { bold: true, fontSize: 8, foregroundColor: rgb(C.ink) } } },
           fields: 'userEnteredFormat(horizontalAlignment,verticalAlignment,textFormat)',
         },
       });

@@ -160,7 +160,7 @@ function addRoomSheet(wb: ExcelJS.Workbook, sheet: RoomSheet, used: Set<string>)
       ws.mergeCells(r, 7, r, 9);
       const c = ws.getCell(r, 7);
       c.value = `※ ${text}`;
-      c.font = { name: SHEET_FONT, size: 9, bold: true, color: { argb: argb(C.ink) } };
+      c.font = { name: SHEET_FONT, size: 8, bold: true, color: { argb: argb(C.ink) } }; // 병합 칸(G:I) 폭 안에 한 줄로
       c.alignment = { horizontal: 'left', vertical: 'middle' };
     });
 

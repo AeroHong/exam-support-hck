@@ -93,7 +93,8 @@
 .rs-sum td.rs-range { font-size: 8.5pt; font-weight: 800; letter-spacing: -0.01em; }
 
 /* 요약표 아래 안내 문구 */
-.rs-notes { margin: 3mm 0 0; padding: 0; list-style: none; font-size: 8.3pt; font-weight: 700; line-height: 1.45; }
+/* 8pt·자간 -0.02em: 오른쪽 칸 폭에 한 줄로 들어감(Pretendard·맑은 고딕 모두). 혹시 넘치면 한 글자가 아니라 단어 단위로 줄바꿈 */
+.rs-notes { margin: 3mm 0 0; padding: 0; list-style: none; font-size: 8pt; letter-spacing: -0.02em; word-break: keep-all; font-weight: 700; line-height: 1.45; }
 .rs-notes li { position: relative; padding-left: 3mm; }
 .rs-notes li::before { content: '※'; position: absolute; left: 0; }
 
