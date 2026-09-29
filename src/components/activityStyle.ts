@@ -1,4 +1,14 @@
-import type { ActionType } from '../firebase/activity';
+import type { ActionType, ActivityLog } from '../firebase/activity';
+
+/**
+ * 한 줄 요약용 "수정 내용" — 세부 변경 내역이 있으면 첫 줄 + 외 N건, 없으면 요약.
+ * 예) "[1학년] 10101 권용준 · 공통국어2: 1-1 → 도움실/1-1 외 3건"
+ */
+export function conciseChange(l: Pick<ActivityLog, 'summary' | 'details'>): string {
+  const d = l.details ?? [];
+  if (d.length === 0) return l.summary;
+  return d.length > 1 ? `${d[0]} 외 ${d.length - 1}건` : d[0];
+}
 
 /** 활동 종류별 칩 색 — 데이터를 바꾸는 활동은 진하게 (활동 기록 화면·최근 활동 패널 공통) */
 export const ACTION_COLOR: Partial<Record<ActionType, 'primary' | 'secondary' | 'warning' | 'error' | 'info' | 'success'>> = {
