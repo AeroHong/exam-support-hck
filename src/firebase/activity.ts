@@ -27,6 +27,7 @@ export const ACTIONS = {
   exam_replace: '엑셀로 교체',
   exam_open: '시험 자료 열기',
   exam_save: '데이터 저장',
+  exam_restore: '버전 복구',
   exam_delete: '시험 자료 삭제',
   print: '인쇄/PDF',
   export_xlsx: 'XLSX 내보내기',
@@ -45,6 +46,7 @@ export interface ActivityInput {
   examTitle?: string;
   summary: string; // 한 줄 설명
   details?: string[]; // 변경 내역 등 (최대 300줄)
+  versionId?: string; // 이 활동으로 만들어진 데이터 버전
 }
 
 export interface ActivityLog extends ActivityInput {
@@ -69,6 +71,7 @@ function payload(input: ActivityInput) {
     details: (input.details ?? []).slice(0, 301),
     examId: input.examId ?? null,
     examTitle: input.examTitle ?? '',
+    versionId: input.versionId ?? null,
     uid: u.uid,
     email: (u.email ?? '').toLowerCase(),
     name: u.displayName ?? '',
@@ -98,6 +101,7 @@ function toLog(d: QueryDocumentSnapshot): ActivityLog {
     details: v.details ?? [],
     examId: v.examId,
     examTitle: v.examTitle,
+    versionId: v.versionId ?? undefined,
     uid: v.uid,
     email: v.email,
     name: v.name,

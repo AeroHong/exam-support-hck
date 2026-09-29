@@ -61,17 +61,21 @@ export function HomePage({ user }: { user: AppUser }) {
       const title = titleFromFileName(file.name);
       const data = { title, sourceFileName: file.name, workbook, vacancies: [] };
       let id = 'local';
+      let version = { versionCount: 0, latestVersionId: null as string | null };
       if (firebaseConfigured) {
         const diff = diffWorkbook(null, workbook);
-        id = await saveExam(null, data, user.email, (newId) => ({
+        const res = await saveExam(null, data, {
+          by: user.email,
+          byName: user.name,
           action: 'exam_create',
-          examId: newId,
-          examTitle: title,
           summary: `${file.name} — ${diff.summary}`,
           details: diff.lines,
-        }));
+          version,
+        });
+        id = res.examId;
+        version = res;
       }
-      openExam(id, data);
+      openExam(id, { ...data, ...version });
       navigate(`/exams/${id}/edit`);
     } catch (e) {
       setError(`파일을 읽지 못했습니다: ${(e as Error).message}`);

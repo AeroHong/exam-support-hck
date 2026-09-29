@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { Issue, ParsedWorkbook, SubjectRoster, VacancyItem } from '../core';
 import { buildRosters, findConflicts, validatePlan } from '../core';
+import type { VersionInfo } from '../firebase/repo';
 
 const HISTORY_LIMIT = 50;
 
@@ -21,15 +22,19 @@ interface ExamState {
   issues: Issue[];
   dirty: boolean; // 저장 후 수정한 내용이 있는지
   saved: SavedSnapshot | null;
+  version: VersionInfo; // 서버의 버전 번호 (저장할 때 다음 번호를 매긴다)
   history: ParsedWorkbook[]; // 되돌리기용 이전 상태
   /** 시험 자료 열기(저장된 상태로) */
-  openExam: (examId: string, data: { title: string; sourceFileName: string; workbook: ParsedWorkbook; vacancies: VacancyItem[] }) => void;
+  openExam: (
+    examId: string,
+    data: { title: string; sourceFileName: string; workbook: ParsedWorkbook; vacancies: VacancyItem[] } & Partial<VersionInfo>,
+  ) => void;
   /** 데이터 수정 — editWorkbook.ts의 순수 함수를 넘긴다 */
   edit: (fn: (wb: ParsedWorkbook) => ParsedWorkbook) => void;
   undo: () => void;
   setTitle: (title: string) => void;
   setVacancies: (v: VacancyItem[]) => void;
-  markSaved: (examId: string) => void;
+  markSaved: (examId: string, version?: VersionInfo) => void;
   close: () => void;
 }
 
@@ -51,12 +56,14 @@ export const useExamStore = create<ExamState>((set, get) => ({
   issues: [],
   dirty: false,
   saved: null,
+  version: { versionCount: 0, latestVersionId: null },
   history: [],
 
-  openExam(examId, data) {
+  openExam(examId, { versionCount = 0, latestVersionId = null, ...data }) {
     set({
       examId,
       ...data,
+      version: { versionCount, latestVersionId },
       ...compute(data.workbook, data.vacancies),
       dirty: false,
       history: [],
@@ -87,12 +94,24 @@ export const useExamStore = create<ExamState>((set, get) => ({
     set({ vacancies: v, ...compute(get().workbook, v), dirty: true });
   },
 
-  markSaved(examId) {
+  markSaved(examId, version) {
     const { workbook, title, vacancies } = get();
-    set({ examId, dirty: false, saved: workbook ? { workbook, title, vacancies } : null });
+    set({ examId, dirty: false, saved: workbook ? { workbook, title, vacancies } : null, ...(version ? { version } : {}) });
   },
 
   close() {
-    set({ examId: null, title: '', sourceFileName: '', workbook: null, vacancies: [], rosters: [], issues: [], dirty: false, saved: null, history: [] });
+    set({
+      examId: null,
+      title: '',
+      sourceFileName: '',
+      workbook: null,
+      vacancies: [],
+      rosters: [],
+      issues: [],
+      dirty: false,
+      saved: null,
+      version: { versionCount: 0, latestVersionId: null },
+      history: [],
+    });
   },
 }));

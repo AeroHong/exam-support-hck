@@ -6,7 +6,9 @@ export const USERS = 'users';
 export const COL = {
   EXAMS: 'exams',
   GRADES: 'grades',
-  VACANCIES: 'vacancies',
+  /** 버전 요약(목록용)과 전체 데이터(복구용)를 나눠 둔다 — 목록을 빠르게 읽기 위해 */
+  VERSIONS: 'versions',
+  VERSION_DATA: 'versionData',
   /** 응시현황표 업무 담당자 — evaluationPlanManagers와 같은 패턴(문서가 있으면 담당자, role로 관리자 구분) */
   EXAM_ROSTER_MANAGERS: 'examRosterManagers',
   /** 활동 기록 — 추가만 가능, 수정·삭제 불가 */

@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router';
 import { Alert, Box, Button, Chip, CircularProgress, Paper, Stack, Tab, Tabs, TextField, Typography } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import UndoIcon from '@mui/icons-material/Undo';
 import type { AppUser } from '../firebase/auth';
 import { firebaseConfigured } from '../firebase/app';
 import { loadExam } from '../firebase/repo';
@@ -21,7 +20,7 @@ export function ExamLayout({ user }: { user: AppUser }) {
   const { examId = '' } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const { examId: openId, title, sourceFileName, dirty, history, openExam, setTitle, undo, close } = useExamStore();
+  const { examId: openId, title, sourceFileName, dirty, version, openExam, setTitle, close } = useExamStore();
   const [error, setError] = useState<string | null>(null);
 
   // 주소의 시험이 열려 있지 않으면 서버에서 불러온다 (새로고침·링크 공유 대응)
@@ -86,11 +85,9 @@ export function ExamLayout({ user }: { user: AppUser }) {
           <Typography variant="body2" color="text.secondary" noWrap>
             {sourceFileName}
           </Typography>
+          {version.versionCount > 0 && <Chip size="small" variant="outlined" label={`v${version.versionCount}`} title="현재 버전" />}
           {dirty && <Chip size="small" color="warning" label="저장 안 된 변경 있음" />}
           <Box sx={{ flex: 1 }} />
-          <Button size="small" startIcon={<UndoIcon />} disabled={!history.length} onClick={undo} title="Ctrl+Z (데이터 수정)">
-            되돌리기{history.length ? ` (${history.length})` : ''}
-          </Button>
           {firebaseConfigured && <SaveButton userEmail={user.email} />}
         </Stack>
         <Tabs value={tab} sx={{ px: 1, minHeight: 40, '& .MuiTab-root': { minHeight: 40, fontWeight: 600 } }}>

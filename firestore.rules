@@ -3,6 +3,7 @@ rules_version = '2';
 //   users/{uid}.role·schoolId  → 학교(계정) 관리자 판정 (isSchoolAdmin)
 //   schools/{id}/examRosterManagers/{emailToDocId} → 응시현황표 사용자 (문서가 있으면 사용자, role: admin|manager)
 //   schools/{id}/activityLogs  → 활동 기록 (추가만, 수정·삭제 불가)
+//   exams/{id}/versions·versionData → 데이터 버전 (추가만, 시험 자료를 지울 때 관리자만 삭제)
 // 로그인 허용 도메인은 .env의 VITE_ALLOWED_DOMAIN과 같아야 한다.
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -75,7 +76,7 @@ service cloud.firestore {
           && request.resource.data.uid == request.auth.uid
           && request.resource.data.email == myEmail()
           && request.resource.data.at == request.time
-          && request.resource.data.keys().hasOnly(['action', 'summary', 'details', 'examId', 'examTitle', 'uid', 'email', 'name', 'at']);
+          && request.resource.data.keys().hasOnly(['action', 'summary', 'details', 'examId', 'examTitle', 'versionId', 'uid', 'email', 'name', 'at']);
         allow update, delete: if false;
       }
 
@@ -84,6 +85,17 @@ service cloud.firestore {
         allow delete: if isRosterAdmin(schoolId);
         match /grades/{grade} {
           allow read, create, update: if canUseExamRoster(schoolId);
+          allow delete: if isRosterAdmin(schoolId);
+        }
+        // 데이터 버전 — 저장 때 추가만. 고칠 수 없고, 시험 자료를 통째로 지울 때만 관리자가 삭제.
+        match /versions/{versionId} {
+          allow read, create: if canUseExamRoster(schoolId);
+          allow update: if false;
+          allow delete: if isRosterAdmin(schoolId);
+        }
+        match /versionData/{versionId} {
+          allow read, create: if canUseExamRoster(schoolId);
+          allow update: if false;
           allow delete: if isRosterAdmin(schoolId);
         }
       }

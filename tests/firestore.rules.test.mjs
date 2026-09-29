@@ -125,6 +125,36 @@ describe('활동 기록', () => {
   });
 });
 
+describe('데이터 버전', () => {
+  const vRef = (db, c, id) => doc(db, 'schools', SCHOOL, 'exams', 'e1', c, id);
+
+  it('사용자는 버전을 추가·조회하지만 고치거나 지울 수 없다', async () => {
+    const db = as(MANAGER);
+    await assertSucceeds(setDoc(vRef(db, 'versions', 'v1'), { versionNo: 1, action: 'exam_save' }));
+    await assertSucceeds(setDoc(vRef(db, 'versionData', 'v1'), { title: 't', plan: [], grades: [] }));
+    await assertSucceeds(getDocs(collection(db, 'schools', SCHOOL, 'exams', 'e1', 'versions')));
+    await assertFails(updateDoc(vRef(db, 'versions', 'v1'), { summary: '조작' }));
+    await assertFails(setDoc(vRef(db, 'versionData', 'v1'), { title: '덮어쓰기' }));
+    await assertFails(deleteDoc(vRef(db, 'versions', 'v1')));
+  });
+  it('관리자는 시험 자료를 지울 때 버전도 지울 수 있다', async () => {
+    await env.withSecurityRulesDisabled((ctx) => setDoc(vRef(ctx.firestore(), 'versions', 'v9'), { versionNo: 9 }));
+    await assertSucceeds(deleteDoc(vRef(as(ADMIN), 'versions', 'v9')));
+  });
+  it('지정되지 않은 계정은 버전을 볼 수 없다', async () => {
+    await assertFails(getDocs(collection(as(STRANGER), 'schools', SCHOOL, 'exams', 'e1', 'versionData')));
+  });
+  it('활동 기록에 버전 번호를 남길 수 있다', async () => {
+    const db = as(MANAGER);
+    await assertSucceeds(
+      setDoc(doc(db, 'schools', SCHOOL, 'activityLogs', 'lv'), {
+        action: 'exam_save', summary: 'v2 · 저장', details: [], examId: 'e1', examTitle: 't', versionId: 'v2',
+        uid: MANAGER.uid, email: MANAGER.email.toLowerCase(), name: '', at: serverTimestamp(),
+      }),
+    );
+  });
+});
+
 describe('지정되지 않은 학교 계정', () => {
   it('시험 자료·담당교사 목록 접근 불가', async () => {
     const db = as(STRANGER);

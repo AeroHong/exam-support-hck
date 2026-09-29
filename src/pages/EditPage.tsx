@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { Alert, Box, Button, Paper, Stack, Tab, Tabs, Typography } from '@mui/material';
 import DownloadIcon from '@mui/icons-material/Download';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
+import UndoIcon from '@mui/icons-material/Undo';
+import RestoreIcon from '@mui/icons-material/Restore';
+import { VersionDrawer } from '../components/VersionDrawer';
 import type { AppUser } from '../firebase/auth';
 import { firebaseConfigured } from '../firebase/app';
 import { logActivity } from '../firebase/activity';
@@ -14,10 +17,11 @@ import { PlanEditor } from '../components/PlanEditor';
 
 /** 시험 자료의 원본 데이터(시험 계획·학년별 명렬)를 웹에서 고치는 화면 */
 export function EditPage({ user }: { user: AppUser }) {
-  const { workbook, issues, title, examId, vacancies, saved, edit, undo, openExam } = useExamStore();
+  const { workbook, issues, title, examId, vacancies, saved, version, history, edit, undo, openExam } = useExamStore();
   const [tab, setTab] = useState('plan');
   const [msg, setMsg] = useState<{ kind: 'success' | 'error' | 'info'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [versionsOpen, setVersionsOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Ctrl+Z 되돌리기 (입력칸에서 글자 되돌리기는 브라우저 기본 동작 유지)
@@ -60,16 +64,19 @@ export function EditPage({ user }: { user: AppUser }) {
     try {
       const next = parseWorkbook(new Uint8Array(await file.arrayBuffer()));
       const diff = diffWorkbook(saved?.workbook ?? null, next);
+      let nextVersion = version;
       if (firebaseConfigured) {
-        await saveExam(examId, { title, sourceFileName: file.name, workbook: next, vacancies }, user.email, (id) => ({
+        nextVersion = await saveExam(examId, { title, sourceFileName: file.name, workbook: next, vacancies }, {
+          by: user.email,
+          byName: user.name,
           action: 'exam_replace',
-          examId: id,
-          examTitle: title,
           summary: `${file.name}로 교체 — ${diff.summary}`,
           details: diff.lines,
-        }));
+          version,
+          baseline: saved ? { title: saved.title, sourceFileName: file.name, workbook: saved.workbook, vacancies: saved.vacancies } : undefined,
+        });
       }
-      openExam(examId, { title, sourceFileName: file.name, workbook: next, vacancies });
+      openExam(examId, { title, sourceFileName: file.name, workbook: next, vacancies, ...nextVersion });
       setMsg({ kind: 'success', text: `'${file.name}'로 교체했습니다 — ${diff.summary}` });
     } catch (e) {
       setMsg({ kind: 'error', text: `교체 실패: ${(e as Error).message}` });
@@ -83,7 +90,16 @@ export function EditPage({ user }: { user: AppUser }) {
 
   return (
     <Stack spacing={2}>
-      <Stack direction="row" spacing={1} sx={{ justifyContent: 'flex-end' }}>
+      <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+        {firebaseConfigured && (
+          <Button variant="outlined" size="small" startIcon={<RestoreIcon />} onClick={() => setVersionsOpen(true)}>
+            버전 기록{version.versionCount ? ` (v${version.versionCount})` : ''}
+          </Button>
+        )}
+        <Button size="small" startIcon={<UndoIcon />} disabled={!history.length} onClick={undo} title="저장하기 전 수정을 한 단계씩 취소 (Ctrl+Z)">
+          실행 취소{history.length ? ` (${history.length})` : ''}
+        </Button>
+        <Box sx={{ flex: 1 }} />
         <Button size="small" startIcon={<DownloadIcon />} onClick={download}>
           엑셀로 내려받기
         </Button>
@@ -108,6 +124,7 @@ export function EditPage({ user }: { user: AppUser }) {
       )}
 
       <IssuesPanel issues={issues} />
+      {firebaseConfigured && <VersionDrawer open={versionsOpen} onClose={() => setVersionsOpen(false)} userEmail={user.email} />}
 
       <Paper variant="outlined" sx={{ px: 2, pt: 1, pb: 2 }}>
         <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}>
