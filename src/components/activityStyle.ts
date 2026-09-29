@@ -1,5 +1,13 @@
 import type { ActionType, ActivityLog } from '../firebase/activity';
 
+/** 데이터가 바뀐 저장 — 최근 활동에 세부 수정 내용을 보여주는 활동 */
+const DATA_CHANGE: ReadonlySet<ActionType> = new Set<ActionType>(['exam_save', 'exam_restore', 'exam_replace']);
+
+/** 최근 활동에 보일 수정 내용 — 데이터 저장일 때만, 그 외(열기·인쇄 등)는 null */
+export function changeDetail(l: Pick<ActivityLog, 'action' | 'summary' | 'details'>): string | null {
+  return DATA_CHANGE.has(l.action) ? conciseChange(l) : null;
+}
+
 /**
  * 한 줄 요약용 "수정 내용" — 세부 변경 내역이 있으면 첫 줄 + 외 N건, 없으면 요약.
  * 예) "[1학년] 10101 권용준 · 공통국어2: 1-1 → 도움실/1-1 외 3건"

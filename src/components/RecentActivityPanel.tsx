@@ -5,7 +5,7 @@ import HistoryIcon from '@mui/icons-material/History';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import { ACTIONS, subscribeRecentActivity, type ActivityLog } from '../firebase/activity';
-import { ACTION_COLOR, conciseChange, relativeTime } from './activityStyle';
+import { ACTION_COLOR, changeDetail, relativeTime } from './activityStyle';
 
 const COUNT = 4; // 최신 1건 + 이전 3건
 const PANEL_W = 228;
@@ -49,9 +49,9 @@ interface ViewProps {
   now: number;
 }
 
-/** 한 건: 수정자 · 수정 내용 */
+/** 한 건: 수정자 · 활동 · 시각 (+ 데이터 저장이면 수정 내용) */
 function Item({ l, now, highlight, dense }: { l: ActivityLog; now: number; highlight?: boolean; dense?: boolean }) {
-  const change = conciseChange(l);
+  const change = changeDetail(l);
   return (
     <Box
       sx={{
@@ -77,22 +77,24 @@ function Item({ l, now, highlight, dense }: { l: ActivityLog; now: number; highl
           {relativeTime(l.at, now)}
         </Typography>
       </Stack>
-      <Typography
-        variant="caption"
-        title={[l.summary, ...(l.details ?? []).slice(0, 10)].join('\n')}
-        sx={{
-          display: '-webkit-box',
-          WebkitLineClamp: 2,
-          WebkitBoxOrient: 'vertical',
-          overflow: 'hidden',
-          lineHeight: 1.4,
-          wordBreak: 'break-all',
-          mt: 0.25,
-          color: 'text.primary',
-        }}
-      >
-        {change}
-      </Typography>
+      {change && (
+        <Typography
+          variant="caption"
+          title={[l.summary, ...(l.details ?? []).slice(0, 10)].join('\n')}
+          sx={{
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden',
+            lineHeight: 1.4,
+            wordBreak: 'break-all',
+            mt: 0.25,
+            color: 'text.primary',
+          }}
+        >
+          {change}
+        </Typography>
+      )}
       {l.examId && !dense && (
         <Link component={RouterLink} to={`/exams/${l.examId}/work`} variant="caption" underline="hover" noWrap sx={{ display: 'block', color: 'text.secondary' }}>
           {l.examTitle || l.examId}
@@ -230,7 +232,7 @@ function TopTicker({ logs, error, now }: ViewProps) {
             {latest.name || latest.email}
           </Typography>
           <Typography variant="body2" color="text.secondary" noWrap sx={{ minWidth: 0, maxWidth: expanded ? 'none' : 'min(46vw, 420px)', flex: expanded ? 1 : 'none' }}>
-            {conciseChange(latest)}
+            {changeDetail(latest) ?? ACTIONS[latest.action] ?? latest.action}
           </Typography>
           <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
             {relativeTime(latest.at, now)}
