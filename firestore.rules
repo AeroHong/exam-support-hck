@@ -1,41 +1,73 @@
 rules_version = '2';
+// 권한 구조는 smart-teachers-office와 같다.
+//   users/{uid}.role·schoolId  → 학교 관리자 판정 (isSchoolAdmin)
+//   schools/{id}/examRosterManagers/{emailToDocId} → 응시현황표 담당교사 (문서가 있으면 담당자)
 // 로그인 허용 도메인은 .env의 VITE_ALLOWED_DOMAIN과 같아야 한다.
 service cloud.firestore {
   match /databases/{database}/documents {
     function schoolDomain() { return 'seonyoo.hs.kr'; }
 
-    function signedIn() { return request.auth != null; }
+    function isSignedIn() { return request.auth != null; }
     function inDomain() {
-      return signedIn()
+      return isSignedIn()
         && request.auth.token.email_verified == true
         && request.auth.token.email.lower().split('@')[1] == schoolDomain();
     }
-    function me() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
-    function isAdmin() { return inDomain() && me().role == 'admin'; }
+    function myEmail() { return request.auth.token.email.lower(); }
+    // apps/shared/lib/emailToDocId와 같은 변환 ('.' → '_', '@' → '__at__')
+    function myEmailDocId() { return myEmail().replace('\\.', '_').replace('@', '__at__'); }
 
-    // 계정: 본인 문서만. 처음 만들 때 role은 'teacher'로만 가능, role 변경은 콘솔에서.
+    function hasUserDoc() { return exists(/databases/$(database)/documents/users/$(request.auth.uid)); }
+    function getUserData() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+
+    function isSchoolAdmin(schoolId) {
+      return inDomain() && hasUserDoc()
+        && getUserData().role in ['admin', 'school_admin']
+        && getUserData().schoolId == schoolId;
+    }
+    function isExamRosterManager(schoolId) {
+      return inDomain()
+        && exists(/databases/$(database)/documents/schools/$(schoolId)/examRosterManagers/$(myEmailDocId()));
+    }
+    // 응시현황표 사용자 = 학교 관리자 또는 담당교사
+    function canUseExamRoster(schoolId) { return isSchoolAdmin(schoolId) || isExamRosterManager(schoolId); }
+
+    // 계정: 본인 문서만. 처음 만들 때 role은 teacher로만, role·schoolId는 본인이 바꿀 수 없음(관리자 지정은 콘솔).
     match /users/{uid} {
-      allow read: if inDomain() && (request.auth.uid == uid || isAdmin());
-      allow create: if inDomain() && request.auth.uid == uid && request.resource.data.role == 'teacher';
+      allow get: if inDomain() && request.auth.uid == uid;
+      allow create: if inDomain() && request.auth.uid == uid
+        && request.resource.data.role == 'teacher'
+        && request.resource.data.email == myEmail();
       allow update: if inDomain() && request.auth.uid == uid
-        && request.resource.data.role == resource.data.role;
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.schoolId == resource.data.schoolId;
     }
 
     match /schools/{schoolId} {
-      allow read: if inDomain();
+      allow get: if canUseExamRoster(schoolId);
+
+      // 담당교사 목록 — 사용자는 누가 담당인지 볼 수 있고, 지정·해제는 관리자만.
+      // 담당교사 본인은 첫 로그인 때 uid·이름·접속 시각만 기록할 수 있다.
+      match /examRosterManagers/{emailId} {
+        allow get: if inDomain() && (emailId == myEmailDocId() || canUseExamRoster(schoolId));
+        allow list: if canUseExamRoster(schoolId);
+        allow create, delete: if isSchoolAdmin(schoolId);
+        allow update: if isSchoolAdmin(schoolId)
+          || (inDomain() && emailId == myEmailDocId()
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['uid', 'name', 'lastLoginAt']));
+      }
 
       match /exams/{examId} {
-        allow read: if inDomain();
-        allow write: if isAdmin();
+        allow read, create, update: if canUseExamRoster(schoolId);
+        allow delete: if isSchoolAdmin(schoolId);
         match /grades/{grade} {
-          allow read: if inDomain();
-          allow write: if isAdmin();
+          allow read, create, update: if canUseExamRoster(schoolId);
+          allow delete: if isSchoolAdmin(schoolId);
         }
       }
 
       match /vacancies/{year} {
-        allow read: if inDomain();
-        allow write: if isAdmin();
+        allow read, write: if canUseExamRoster(schoolId);
       }
     }
   }

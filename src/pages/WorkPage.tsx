@@ -166,7 +166,7 @@ export function WorkPage({ user }: { user: AppUser }) {
           <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
             {sourceFileName} · {workbook.grades.map((g) => `${g.grade} ${g.students.length}명`).join(', ')} · 시험 {rosters.length}건
           </Typography>
-          {firebaseConfigured && user.role === 'admin' && (
+          {firebaseConfigured && (
             <Button variant={dirty ? 'contained' : 'outlined'} startIcon={<SaveIcon />} onClick={onSave}>
               {examId ? (dirty ? '변경 내용 저장' : '저장됨') : '저장'}
             </Button>

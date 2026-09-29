@@ -8,6 +8,8 @@ import { HomePage } from './pages/HomePage';
 import { WorkPage } from './pages/WorkPage';
 import { VacancyPage } from './pages/VacancyPage';
 import { EditPage } from './pages/EditPage';
+import { UsersPage } from './pages/UsersPage';
+import { NoAccessPage } from './pages/NoAccessPage';
 import { SaveButton } from './components/SaveButton';
 import { useExamStore } from './store/examStore';
 
@@ -15,7 +17,7 @@ import { useExamStore } from './store/examStore';
 const LOCAL_USER: AppUser = { uid: 'local', email: '', name: '로컬 모드', role: 'admin' };
 
 export function App() {
-  const { user, loading, error, setError } = useAuth();
+  const { user, denied, loading, error, setError } = useAuth();
   const location = useLocation();
   const dirty = useExamStore((s) => s.dirty && s.workbook !== null);
 
@@ -34,6 +36,7 @@ export function App() {
       </Box>
     );
   }
+  if (firebaseConfigured && denied) return <NoAccessPage denied={denied} />;
   if (firebaseConfigured && !user) return <LoginPage error={error} onError={setError} />;
 
   const me = user ?? LOCAL_USER;
@@ -42,6 +45,7 @@ export function App() {
     { to: '/edit', label: '데이터 수정' },
     { to: '/work', label: '응시현황표' },
     { to: '/vacancies', label: '결번 관리' },
+    ...(firebaseConfigured && me.role === 'admin' ? [{ to: '/users', label: '사용자 관리' }] : []),
   ];
 
   return (
@@ -63,10 +67,10 @@ export function App() {
             </Button>
           ))}
           <Box sx={{ flex: 1 }} />
-          {firebaseConfigured && me.role === 'admin' && <SaveButton userEmail={me.email} />}
+          {firebaseConfigured && <SaveButton userEmail={me.email} />}
           <Typography variant="body2" color="text.secondary">
             {me.name}
-            {me.role === 'admin' && firebaseConfigured ? ' (관리자)' : ''}
+            {firebaseConfigured ? (me.role === 'admin' ? ' (관리자)' : ' (담당교사)') : ''}
           </Typography>
           {firebaseConfigured && (
             <Button size="small" onClick={() => signOut()}>
@@ -82,6 +86,7 @@ export function App() {
           <Route path="/edit" element={<EditPage user={me} />} />
           <Route path="/work" element={<WorkPage user={me} />} />
           <Route path="/vacancies" element={<VacancyPage user={me} />} />
+          <Route path="/users" element={<UsersPage user={me} />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Box>

@@ -21,8 +21,8 @@ export function EditPage({ user }: { user: AppUser }) {
   const { save, saving } = useSaveExam(user.email);
   const [tab, setTab] = useState('plan');
   const [msg, setMsg] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
-  // 로컬 모드는 누구나, Firebase 모드는 관리자만 수정
-  const canEdit = !firebaseConfigured || user.role === 'admin';
+  // 관리자·담당교사 모두 수정 가능 (지정되지 않은 계정은 로그인 단계에서 막힌다)
+  const canEdit = !firebaseConfigured || user.role === 'admin' || user.role === 'manager';
 
   // Ctrl+Z 되돌리기 (입력칸에서 글자 되돌리기는 브라우저 기본 동작 유지)
   useEffect(() => {

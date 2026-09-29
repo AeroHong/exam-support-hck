@@ -6,20 +6,31 @@ import {
   signOut as fbSignOut,
   type User,
 } from 'firebase/auth';
-import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { doc, getDoc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import { ALLOWED_DOMAIN, auth, db, SCHOOL_ID } from './app';
+import { ADMIN_ROLES, COL, emailToDocId, USERS } from './schema';
 
 const DRIVE_SCOPES = [
   'https://www.googleapis.com/auth/drive.file',
   'https://www.googleapis.com/auth/spreadsheets',
 ];
 
-export type Role = 'admin' | 'teacher';
+/**
+ * admin   — 학교 관리자(users.role이 admin/school_admin): 모든 기능 + 사용자 관리·자료 삭제
+ * manager — 응시현황표 담당교사(examRosterManagers에 지정됨): 삭제 외 모든 기능
+ */
+export type Role = 'admin' | 'manager';
 export interface AppUser {
   uid: string;
   email: string;
   name: string;
   role: Role;
+}
+
+/** 로그인은 됐지만 담당교사로 지정되지 않은 계정 */
+export interface DeniedUser {
+  email: string;
+  name: string;
 }
 
 const domainError = () => new Error(`${ALLOWED_DOMAIN} 계정으로만 로그인할 수 있습니다.`);
@@ -36,15 +47,34 @@ function provider(withDrive: boolean): GoogleAuthProvider {
   return p;
 }
 
-async function ensureUserDoc(u: User): Promise<AppUser> {
-  const base = { uid: u.uid, email: u.email ?? '', name: u.displayName ?? u.email ?? '' };
-  if (!db) return { ...base, role: 'admin' };
-  const ref = doc(db, 'users', u.uid);
-  const snap = await getDoc(ref);
-  if (snap.exists()) return { ...base, role: (snap.data().role as Role) ?? 'teacher' };
-  // 첫 로그인은 교사 권한. 관리자 지정은 Firebase 콘솔에서 role을 'admin'으로 수정.
-  await setDoc(ref, { ...base, role: 'teacher', schoolId: SCHOOL_ID, createdAt: serverTimestamp() });
-  return { ...base, role: 'teacher' };
+/**
+ * 권한 판정 — smart-teachers-office AuthContext와 같은 흐름.
+ * ① users/{uid}가 없으면 teacher로 만든다(role·schoolId는 본인이 바꿀 수 없음)
+ * ② users.role이 관리자면 admin
+ * ③ 아니면 examRosterManagers/{emailToDocId}가 있으면 manager (첫 로그인 시 uid·이름·접속 시각 기록)
+ * ④ 둘 다 아니면 접근 거부
+ */
+async function resolveAccess(u: User): Promise<AppUser | DeniedUser> {
+  const email = (u.email ?? '').toLowerCase();
+  const name = u.displayName ?? email;
+  if (!db) return { uid: u.uid, email, name, role: 'admin' };
+
+  const userRef = doc(db, USERS, u.uid);
+  const userSnap = await getDoc(userRef);
+  if (!userSnap.exists()) {
+    await setDoc(userRef, { name, email, role: 'teacher', schoolId: SCHOOL_ID, createdAt: serverTimestamp() });
+  } else if (ADMIN_ROLES.includes(userSnap.data().role) && userSnap.data().schoolId === SCHOOL_ID) {
+    updateDoc(userRef, { lastLoginAt: serverTimestamp() }).catch(() => {});
+    return { uid: u.uid, email, name, role: 'admin' };
+  }
+
+  const managerRef = doc(db, 'schools', SCHOOL_ID, COL.EXAM_ROSTER_MANAGERS, emailToDocId(email));
+  const managerSnap = await getDoc(managerRef).catch(() => null);
+  if (managerSnap?.exists()) {
+    updateDoc(managerRef, { uid: u.uid, name, lastLoginAt: serverTimestamp() }).catch(() => {});
+    return { uid: u.uid, email, name, role: 'manager' };
+  }
+  return { email, name };
 }
 
 export async function signIn(): Promise<void> {
@@ -80,6 +110,7 @@ export async function getGoogleAccessToken(): Promise<string> {
 
 export function useAuth() {
   const [user, setUser] = useState<AppUser | null>(null);
+  const [denied, setDenied] = useState<DeniedUser | null>(null);
   const [loading, setLoading] = useState(!!auth);
   const [error, setError] = useState<string | null>(null);
 
@@ -87,12 +118,19 @@ export function useAuth() {
     if (!auth) return;
     const a = auth;
     return onAuthStateChanged(a, async (u) => {
+      setLoading(true);
       try {
-        if (!u) setUser(null);
-        else if (!domainOk(u.email)) {
+        setUser(null);
+        setDenied(null);
+        if (!u) return;
+        if (!domainOk(u.email)) {
           await fbSignOut(a);
           setError(domainError().message);
-        } else setUser(await ensureUserDoc(u));
+          return;
+        }
+        const access = await resolveAccess(u);
+        if ('role' in access) setUser(access);
+        else setDenied(access);
       } catch (e) {
         setError((e as Error).message);
       } finally {
@@ -101,5 +139,5 @@ export function useAuth() {
     });
   }, []);
 
-  return { user, loading, error, setError };
+  return { user, denied, loading, error, setError };
 }

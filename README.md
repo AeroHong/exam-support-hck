@@ -41,8 +41,12 @@ npm run build
 1. Firebase 콘솔에서 프로젝트를 만들고 **Authentication → Google** 로그인을 켭니다.
 2. **Firestore**를 만들고, `firestore.rules`의 `SCHOOL_DOMAIN`을 학교 도메인으로 바꾼 뒤 `firebase deploy --only firestore:rules`로 배포합니다.
 3. 웹 앱을 등록하고 설정값을 `.env`에 넣습니다(`.env.example` 참고).
-4. 처음 로그인하면 `users/{uid}` 문서가 `role: 'teacher'`로 생성됩니다. 관리자는 콘솔에서 `role`을 `admin`으로 바꿉니다.
-   관리자만 시험 자료와 결번을 저장할 수 있습니다.
+4. 권한은 smart-teachers-office와 같은 구조입니다.
+   - **관리자**: `users/{uid}.role`이 `admin`(또는 `school_admin`)이고 `schoolId`가 같은 계정. 처음 한 명은 콘솔에서 `role`을 바꿉니다.
+   - **담당교사**: 관리자가 앱의 '사용자 관리'에서 이메일로 지정합니다(`schools/{schoolId}/examRosterManagers/{emailToDocId}`).
+     아직 로그인한 적 없는 교사도 미리 지정할 수 있고, 처음 로그인하면 바로 사용합니다. 자료 삭제·사용자 관리만 못 합니다.
+   - 지정되지 않은 계정은 로그인해도 '사용 권한이 없습니다' 화면만 보이고, 보안 규칙에서 데이터가 차단됩니다.
+   - 규칙 테스트: `npm run test:rules` (Firestore 에뮬레이터, Java 필요)
 5. Google 시트로 내보내려면 Google Cloud 콘솔(같은 프로젝트)에서 **Google Sheets API**와 **Google Drive API**를 켜고,
    OAuth 동의 화면을 **내부**로 설정한 다음 `drive.file`, `spreadsheets` 스코프를 추가합니다.
 

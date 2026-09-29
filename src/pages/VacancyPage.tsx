@@ -35,7 +35,7 @@ export function VacancyPage({ user }: { user: AppUser }) {
   const [type, setType] = useState<VacancyItem['type']>('결번');
   const [note, setNote] = useState('');
   const [msg, setMsg] = useState<{ kind: 'success' | 'error' | 'info'; text: string } | null>(null);
-  const canEdit = !firebaseConfigured || user.role === 'admin';
+  const canEdit = !firebaseConfigured || user.role === 'admin' || user.role === 'manager';
 
   useEffect(() => setItems(vacancies), [vacancies]);
 
