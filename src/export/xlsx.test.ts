@@ -24,6 +24,13 @@ describe.skipIf(!existsSync(fixture))('xlsx 내보내기', () => {
     expect(ws.getCell('I4').value).toBe('10101 ~ 10128');
     expect(ws.getCell('G7').value).toBe('응시2도움실');
     expect(ws.getCell('H6').font.color?.argb).toBe('FFA9B2AD'); // 응시1교실 인원수는 연한 회색
+    expect(ws.getCell('I6').value).toBe('실제 응시인원 확인');
+    expect(ws.getCell('G13').value).toBe('※ 표를 참고하여 답안지 봉투에 기재하시기 바랍니다.');
+    expect(ws.getCell('G14').value).toBe('※ 결시학생 학번을 기록해주시기 바랍니다.');
+    // 글자는 검정·굵게
+    expect(ws.getCell('B7').font).toMatchObject({ bold: true, color: { argb: 'FF000000' } });
+    expect(ws.getCell('A6').font).toMatchObject({ bold: true, color: { argb: 'FF000000' } });
+    expect(title.richText.every((r) => (r as { font?: { color?: { argb?: string } } }).font?.color?.argb === 'FF000000')).toBe(true);
     expect(ws.getCell('H7').value).toBe(1);
     expect(ws.getCell('B7').value).toBe('10101');
     // 응시 27명 → 7~33행까지만 명단, 그 아래 빈 행 없음

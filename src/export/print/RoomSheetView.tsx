@@ -1,5 +1,5 @@
 import type { RoomSheet } from '../../core';
-import { makeHakbeon, SEAT_ROWS, seatRowHeightMm, summarize } from '../../core';
+import { makeHakbeon, SEAT_ROWS, seatRowHeightMm, SUMMARY_NOTES, summarize } from '../../core';
 import './roomSheet.css';
 
 const COLS = {
@@ -138,6 +138,11 @@ export function RoomSheetView({ sheet }: { sheet: RoomSheet }) {
                     ))}
                   </tbody>
                 </table>
+                <ul className="rs-notes">
+                  {SUMMARY_NOTES.map((n) => (
+                    <li key={n}>{n}</li>
+                  ))}
+                </ul>
               </div>
             </div>
 

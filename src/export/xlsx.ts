@@ -1,7 +1,7 @@
 import ExcelJS from 'exceljs';
 import JSZip from 'jszip';
 import type { RoomSheet, SubjectRoster } from '../core';
-import { makeHakbeon, SEAT_ROWS, seatRowHeightMm, summarize } from '../core';
+import { makeHakbeon, SEAT_ROWS, seatRowHeightMm, SUMMARY_NOTES, summarize } from '../core';
 import { SHEET_COLORS, SHEET_FONT } from './theme';
 
 const C = SHEET_COLORS;
@@ -21,7 +21,7 @@ interface CellStyle {
 function style(cell: ExcelJS.Cell, opts: CellStyle = {}) {
   cell.border = { top: soft, left: soft, bottom: soft, right: soft };
   cell.alignment = center;
-  cell.font = { name: SHEET_FONT, size: opts.size ?? 10, bold: opts.bold, color: { argb: argb(opts.ink ?? C.ink) } };
+  cell.font = { name: SHEET_FONT, size: opts.size ?? 10, bold: opts.bold ?? true, color: { argb: argb(opts.ink ?? C.ink) } };
   if (opts.fill) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: argb(opts.fill) } };
 }
 
@@ -41,9 +41,10 @@ function outline(ws: ExcelJS.Worksheet, r1: number, c1: number, r2: number, c2: 
   }
 }
 
-const HEAD: CellStyle = { fill: C.headBg, ink: C.headInk, bold: true, size: 9 };
-const LIST_HEAD: CellStyle = { fill: C.listHeadBg, ink: C.listHeadInk, bold: true, size: 9 };
-const SUM_HEAD: CellStyle = { fill: C.sumHeadBg, ink: C.sumHeadInk, bold: true, size: 9 };
+// 글자는 모두 검정·굵게 (style 기본값), 머리글은 배경색으로만 구분
+const HEAD: CellStyle = { fill: C.headBg, size: 9 };
+const LIST_HEAD: CellStyle = { fill: C.listHeadBg, size: 9 };
+const SUM_HEAD: CellStyle = { fill: C.sumHeadBg, size: 9 };
 const MM_TO_PT = 2.835;
 
 function safeSheetName(name: string, used: Set<string>): string {
@@ -78,9 +79,9 @@ function addRoomSheet(wb: ExcelJS.Workbook, sheet: RoomSheet, used: Set<string>)
     const pageNote = sum.pages.length > 1 ? `  (${pageIdx + 1}/${sum.pages.length})` : '';
     title.value = {
       richText: [
-        { text: sheet.roomName + '   ', font: { name: SHEET_FONT, size: 20, bold: true, color: { argb: argb(C.accent) } } },
+        { text: sheet.roomName + '   ', font: { name: SHEET_FONT, size: 20, bold: true, color: { argb: argb(C.ink) } } },
         { text: sheet.subject + '   ', font: { name: SHEET_FONT, size: 18, bold: true, color: { argb: argb(C.ink) } } },
-        { text: (sheet.kind === 'waiting' ? '대기실 현황표' : '응시현황표') + pageNote, font: { name: SHEET_FONT, size: 13, color: { argb: argb(C.muted) } } },
+        { text: (sheet.kind === 'waiting' ? '대기실 현황표' : '응시현황표') + pageNote, font: { name: SHEET_FONT, size: 14, bold: true, color: { argb: argb(C.ink) } } },
       ],
     };
     title.alignment = { horizontal: 'center', vertical: 'middle' };
@@ -96,7 +97,7 @@ function addRoomSheet(wb: ExcelJS.Workbook, sheet: RoomSheet, used: Set<string>)
     [sum.dateTime, sheet.roomName, sum.subjectLabel, sum.classLabel].forEach((v, i) => {
       const c = ws.getRow(4).getCell(i + 1);
       c.value = v;
-      style(c, { size: i === 3 && v.length > 12 ? 8 : i === 1 ? 11 : 10, bold: i === 1 });
+      style(c, { size: i === 3 && v.length > 12 ? 8 : i === 1 ? 11 : 10 });
     });
     outline(ws, 3, 1, 4, 4);
 
@@ -140,8 +141,6 @@ function addRoomSheet(wb: ExcelJS.Workbook, sheet: RoomSheet, used: Set<string>)
       values.forEach((v, ci) =>
         style(Object.assign(row.getCell(ci + 1), { value: v }), {
           fill: zebra,
-          ink: ci === 0 ? C.muted : C.ink,
-          bold: ci === 2,
           size: ci === 0 ? 9 : 10,
         }),
       );
@@ -155,7 +154,18 @@ function addRoomSheet(wb: ExcelJS.Workbook, sheet: RoomSheet, used: Set<string>)
     ws.getRow(5).height = 22;
     ws.getRow(6).height = 22;
     // 요약표가 11행까지 있으므로 명단이 짧아도 11행까지는 인쇄
-    ws.pageSetup.printArea = `A1:I${Math.max(11, 6 + students.length)}`;
+    // 요약표 아래 안내 문구 (13~14행)
+    SUMMARY_NOTES.forEach((text, i) => {
+      const r = 7 + sum.rows.length + i;
+      ws.mergeCells(r, 7, r, 9);
+      const c = ws.getCell(r, 7);
+      c.value = `※ ${text}`;
+      c.font = { name: SHEET_FONT, size: 9, bold: true, color: { argb: argb(C.ink) } };
+      c.alignment = { horizontal: 'left', vertical: 'middle' };
+    });
+
+    // 요약표·안내 문구가 14행까지 있으므로 명단이 짧아도 14행까지는 인쇄
+    ws.pageSetup.printArea = `A1:I${Math.max(8 + sum.rows.length, 6 + students.length)}`;
   });
 }
 

@@ -1,6 +1,6 @@
 // Google 스프레드시트 내보내기 — legacy code.gs buildSheetRequests를 응시현황표양식0923 배치로 옮긴 것
 import type { RoomSheet, SubjectRoster } from '../core';
-import { makeHakbeon, SEAT_ROWS, seatRowHeightMm, summarize } from '../core';
+import { makeHakbeon, SEAT_ROWS, seatRowHeightMm, SUMMARY_NOTES, summarize } from '../core';
 import { SHEET_COLORS } from './theme';
 import { subjectFileName } from './xlsx';
 
@@ -44,7 +44,7 @@ function boxFormat(sheetId: number, r1: number, c1: number, r2: number, c2: numb
           horizontalAlignment: 'CENTER',
           verticalAlignment: 'MIDDLE',
           wrapStrategy: 'WRAP',
-          textFormat: { bold: !!f.bold, fontSize: f.size ?? 10, foregroundColor: rgb(f.ink ?? C.ink) },
+          textFormat: { bold: f.bold ?? true, fontSize: f.size ?? 10, foregroundColor: rgb(f.ink ?? C.ink) },
           borders: { top: softLine, bottom: softLine, left: softLine, right: softLine },
         },
       },
@@ -66,12 +66,13 @@ function outline(sheetId: number, r1: number, c1: number, r2: number, c2: number
   };
 }
 
-const HEAD: Fmt = { bg: C.headBg, ink: C.headInk, bold: true, size: 9 };
-const LIST_HEAD: Fmt = { bg: C.listHeadBg, ink: C.listHeadInk, bold: true, size: 9 };
-const SUM_HEAD: Fmt = { bg: C.sumHeadBg, ink: C.sumHeadInk, bold: true, size: 9 };
+// 글자는 모두 검정·굵게 (boxFormat 기본값), 머리글은 배경색으로만 구분
+const HEAD: Fmt = { bg: C.headBg, size: 9 };
+const LIST_HEAD: Fmt = { bg: C.listHeadBg, size: 9 };
+const SUM_HEAD: Fmt = { bg: C.sumHeadBg, size: 9 };
 const MM_TO_PX = 3.78;
 
-/** 제목: 고사실(강조색) · 과목 · 응시현황표(보조색) */
+/** 제목: 고사실 · 과목 · 응시현황표 (모두 검정·굵게, 크기만 다르게) */
 function titleCell(roomName: string, subject: string, kind: string) {
   const text = `${roomName}   ${subject}   ${kind}`;
   const run = (startIndex: number, color: Color, fontSize: number, bold: boolean) => ({
@@ -81,9 +82,9 @@ function titleCell(roomName: string, subject: string, kind: string) {
   return {
     userEnteredValue: { stringValue: text },
     textFormatRuns: [
-      run(0, rgb(C.accent), 20, true),
+      run(0, rgb(C.ink), 20, true),
       run(roomName.length + 3, rgb(C.ink), 18, true),
-      run(roomName.length + subject.length + 6, rgb(C.muted), 13, false),
+      run(roomName.length + subject.length + 6, rgb(C.ink), 14, true),
     ],
   };
 }
@@ -101,7 +102,8 @@ function sheetRequests(firstSheetId: number, sheet: RoomSheet, isFirst: boolean)
   sum.pages.forEach((students, p) => {
     const sheetId = firstSheetId + p;
     const title = (sum.pages.length > 1 ? `${sheet.roomName}(${p + 1})` : sheet.roomName).slice(0, 90);
-    const lastRow = Math.max(11, 6 + students.length); // 요약표(11행)와 명단 중 긴 쪽까지만
+    const notesRow = 6 + sum.rows.length; // 요약표 아래 한 줄 띄고 안내 문구 (0-based 12, 13)
+    const lastRow = Math.max(notesRow + SUMMARY_NOTES.length, 6 + students.length); // 안내 문구와 명단 중 긴 쪽까지만
     const gridProperties = { rowCount: lastRow, columnCount: 9 };
     if (isFirst && p === 0) {
       requests.push({ updateSheetProperties: { properties: { sheetId: 0, title, gridProperties }, fields: 'title,gridProperties' } });
@@ -123,6 +125,7 @@ function sheetRequests(firstSheetId: number, sheet: RoomSheet, isFirst: boolean)
       if (i === 0) rows.push(['좌석번호', '학번', '이름', '성별', '결시체크', null, ...summaryCells(sum, 0)]);
       rows.push([...left, null, ...(i + 1 < sum.rows.length ? summaryCells(sum, i + 1) : [null, null, null])]);
     }
+    SUMMARY_NOTES.forEach((text, i) => (rows[notesRow + i][6] = `※ ${text}`));
 
     requests.push({
       updateCells: {
@@ -158,27 +161,37 @@ function sheetRequests(firstSheetId: number, sheet: RoomSheet, isFirst: boolean)
     // 고사 정보 (A3:D4)
     requests.push(boxFormat(sid, 2, 0, 3, 4, HEAD));
     requests.push(boxFormat(sid, 3, 0, 4, 4));
-    requests.push(boxFormat(sid, 3, 1, 4, 2, { bold: true, size: 11 }));
+    requests.push(boxFormat(sid, 3, 1, 4, 2, { size: 11 }));
     requests.push(outline(sid, 2, 0, 4, 4));
     // 재적인원 (G3:I4)
     requests.push(boxFormat(sid, 2, 6, 3, 9, SUM_HEAD));
     requests.push(boxFormat(sid, 3, 6, 4, 7, SUM_HEAD));
-    requests.push(boxFormat(sid, 3, 7, 4, 8, { bold: true, size: 11 }));
-    requests.push(boxFormat(sid, 3, 8, 4, 9, { bold: true, size: 9 }));
+    requests.push(boxFormat(sid, 3, 7, 4, 8, { size: 11 }));
+    requests.push(boxFormat(sid, 3, 8, 4, 9, { size: 9 }));
     requests.push(outline(sid, 2, 6, 4, 9));
     // 요약표 (G5:I11)
     requests.push(boxFormat(sid, 4, 6, 5, 9, SUM_HEAD));
     requests.push(boxFormat(sid, 5, 6, 5 + sum.rows.length, 7, SUM_HEAD));
-    requests.push(boxFormat(sid, 5, 7, 5 + sum.rows.length, 8, { bold: true, size: 11 }));
-    requests.push(boxFormat(sid, 5, 7, 6, 8, { bold: true, size: 11, ink: C.provisional })); // 응시1교실: 결시로 바뀌는 값
+    requests.push(boxFormat(sid, 5, 7, 5 + sum.rows.length, 8, { size: 11 }));
+    requests.push(boxFormat(sid, 5, 7, 6, 8, { size: 11, ink: C.provisional })); // 응시1교실: 결시로 바뀌는 값
     requests.push(boxFormat(sid, 5, 8, 5 + sum.rows.length, 9, { size: 8 }));
     requests.push(outline(sid, 4, 6, 5 + sum.rows.length, 9));
+    // 요약표 아래 안내 문구 (G:I 병합, 테두리 없음)
+    SUMMARY_NOTES.forEach((_, i) => {
+      requests.push({ mergeCells: { range: range(sid, notesRow + i, 6, notesRow + i + 1, 9), mergeType: 'MERGE_ALL' } });
+      requests.push({
+        repeatCell: {
+          range: range(sid, notesRow + i, 6, notesRow + i + 1, 9),
+          cell: { userEnteredFormat: { horizontalAlignment: 'LEFT', verticalAlignment: 'MIDDLE', textFormat: { bold: true, fontSize: 9, foregroundColor: rgb(C.ink) } } },
+          fields: 'userEnteredFormat(horizontalAlignment,verticalAlignment,textFormat)',
+        },
+      });
+    });
     // 명단 (A6:E…)
     requests.push(boxFormat(sid, 5, 0, 6, 5, LIST_HEAD));
     if (students.length > 0) {
       requests.push(boxFormat(sid, 6, 0, 6 + students.length, 5));
-      requests.push(boxFormat(sid, 6, 0, 6 + students.length, 1, { ink: C.muted, size: 9 }));
-      requests.push(boxFormat(sid, 6, 2, 6 + students.length, 3, { bold: true }));
+      requests.push(boxFormat(sid, 6, 0, 6 + students.length, 1, { size: 9 }));
       requests.push({
         addBanding: {
           bandedRange: {

@@ -1,16 +1,13 @@
-/* 응시현황표 — 0923 양식 구조를 유지한 A4 세로 1장. 색은 src/export/theme.ts와 같다. */
+/* 응시현황표 — 0923 양식 구조를 유지한 A4 세로 1장. 색은 src/export/theme.ts와 같다.
+   글자는 모두 검정·굵게(인쇄 가독성), 배경색과 선으로만 구역을 나눈다. */
 .rs-page {
-  --ink: #1f2a24;
-  --muted: #6b7770;
+  --ink: #000;
   --accent: #2e6b4f;
   --line-strong: #3a4540;
   --line-soft: #c9d3cd;
   --head-bg: #e6f0ea;
-  --head-ink: #24503a;
   --list-head-bg: #f5eee3;
-  --list-head-ink: #5b4a36;
   --sum-head-bg: #e3f1ee;
-  --sum-head-ink: #1f5a4e;
   --zebra: #f7f9f8;
   --provisional: #a9b2ad;
 
@@ -22,6 +19,7 @@
   color: var(--ink);
   font-family: 'Pretendard', 'Malgun Gothic', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
   font-size: 9pt;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
   display: flex;
   flex-direction: column;
@@ -39,10 +37,10 @@
   border-bottom: 0.6mm solid var(--accent);
   white-space: nowrap;
 }
-.rs-title-room { font-size: 20pt; font-weight: 800; color: var(--accent); letter-spacing: -0.02em; }
-.rs-title-subject { font-size: 18pt; font-weight: 700; letter-spacing: -0.02em; }
-.rs-title-kind { font-size: 13pt; font-weight: 500; color: var(--muted); }
-.rs-title-page { font-size: 10pt; font-weight: 500; color: var(--muted); }
+.rs-title-room { font-size: 20pt; font-weight: 800; letter-spacing: -0.02em; }
+.rs-title-subject { font-size: 18pt; font-weight: 800; letter-spacing: -0.02em; }
+.rs-title-kind { font-size: 14pt; font-weight: 700; }
+.rs-title-page { font-size: 10pt; font-weight: 700; }
 
 .rs-body { display: flex; gap: 5mm; align-items: flex-start; }
 .rs-left { flex: 0 0 116mm; }
@@ -63,37 +61,41 @@
   padding: 0 1.2mm;
   overflow: hidden;
 }
-.rs-table th { font-weight: 600; font-size: 8.3pt; letter-spacing: -0.01em; }
+.rs-table th { font-weight: 800; font-size: 8.5pt; letter-spacing: -0.01em; }
 
-.rs-head th { background: var(--head-bg); color: var(--head-ink); height: 9mm; line-height: 1.25; }
+.rs-head th { background: var(--head-bg); height: 9mm; line-height: 1.25; }
 .rs-head td { height: 10.5mm; white-space: pre-line; line-height: 1.3; font-size: 9.5pt; }
-.rs-head td.rs-strong { font-weight: 700; font-size: 11pt; }
+.rs-head td.rs-strong { font-weight: 800; font-size: 11pt; }
 
 .rs-list thead th {
   background: var(--list-head-bg);
-  color: var(--list-head-ink);
   height: 7.5mm;
   border-bottom: 0.3mm solid var(--line-strong);
 }
-.rs-list td { font-size: 9.5pt; line-height: 1.2; padding-top: 0; padding-bottom: 0; }
+.rs-list td { font-size: 9.8pt; line-height: 1.2; padding-top: 0; padding-bottom: 0; }
 .rs-list tbody tr:nth-child(even) td { background: var(--zebra); }
-.rs-list td.rs-seat { color: var(--muted); font-size: 8.5pt; }
-.rs-list td.rs-name { font-weight: 600; letter-spacing: 0.02em; }
+.rs-list td.rs-seat { font-size: 9pt; }
+.rs-list td.rs-name { font-weight: 800; letter-spacing: 0.02em; }
 .rs-box {
   display: inline-block;
   width: 3.4mm;
   height: 3.4mm;
-  border: 0.25mm solid var(--line-strong);
+  border: 0.3mm solid var(--ink);
   border-radius: 0.6mm;
   vertical-align: middle;
 }
 
-.rs-sum thead th { background: var(--sum-head-bg); color: var(--sum-head-ink); height: 8mm; }
-.rs-sum th.rs-sub { background: var(--sum-head-bg); color: var(--sum-head-ink); height: 9.5mm; font-size: 8pt; }
-.rs-sum td { white-space: pre-line; line-height: 1.3; font-size: 7.8pt; padding: 0.8mm 1.2mm; }
-.rs-sum td.rs-count { font-size: 11pt; font-weight: 700; }
-.rs-sum td.rs-provisional { color: var(--provisional); font-weight: 600; }
-.rs-sum td.rs-range { font-size: 8.3pt; font-weight: 600; letter-spacing: -0.01em; }
+.rs-sum thead th { background: var(--sum-head-bg); height: 8mm; }
+.rs-sum th.rs-sub { background: var(--sum-head-bg); height: 9.5mm; font-size: 8.3pt; }
+.rs-sum td { white-space: pre-line; line-height: 1.3; font-size: 8pt; padding: 0.8mm 1.2mm; }
+.rs-sum td.rs-count { font-size: 11pt; font-weight: 800; }
+.rs-sum td.rs-provisional { color: var(--provisional); }
+.rs-sum td.rs-range { font-size: 8.5pt; font-weight: 800; letter-spacing: -0.01em; }
+
+/* 요약표 아래 안내 문구 */
+.rs-notes { margin: 3mm 0 0; padding: 0; list-style: none; font-size: 8.3pt; font-weight: 700; line-height: 1.45; }
+.rs-notes li { position: relative; padding-left: 3mm; }
+.rs-notes li::before { content: '※'; position: absolute; left: 0; }
 
 .rs-gap { height: 4mm; }
 .rs-footer {
@@ -102,7 +104,7 @@
   display: flex;
   justify-content: space-between;
   font-size: 7.5pt;
-  color: var(--muted);
+  font-weight: 700;
 }
 
 @media screen {

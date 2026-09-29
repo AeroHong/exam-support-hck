@@ -28,6 +28,9 @@ function chunk<T>(arr: T[], size: number): T[][] {
   return out;
 }
 
+/** 요약표 아래 안내 문구 (감독교사용) */
+export const SUMMARY_NOTES = ['표를 참고하여 답안지 봉투에 기재하시기 바랍니다.', '결시학생 학번을 기록해주시기 바랍니다.'];
+
 /** 현황표 한 장의 머리글·요약표 값 (인쇄·XLSX·구글시트 공통) */
 export function summarize(sheet: RoomSheet): SheetSummary {
   const n = sheet.main.length;
@@ -50,7 +53,7 @@ export function summarize(sheet: RoomSheet): SheetSummary {
     enrolled: n + sheet.doum.length + sheet.separate.length,
     enrolledRange,
     rows: [
-      { label: '응시1교실', count: main, detail: '' },
+      { label: '응시1교실', count: main, detail: '실제 응시인원 확인' },
       { label: '응시2도움실', count: doum, detail: listOrBlank(sheet.doum, sheet.kind === 'doum') },
       { label: '응시3별도실', count: sep, detail: listOrBlank(sheet.separate, sheet.kind === 'separate') },
       { label: '결번', count: sheet.vacancies.length || '', detail: sheet.vacancies.join(', ') },
