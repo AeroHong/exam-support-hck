@@ -19,7 +19,7 @@ describe.skipIf(!existsSync(fixture))('xlsx 내보내기', () => {
     expect(wb.worksheets.map((w) => w.name)).toEqual(['1-1', '1-2', '1-3', '1-4', '1-5', '1-6', '1-7', '도움실', '교과2']);
     const ws = wb.getWorksheet('1-1')!;
     const title = ws.getCell('A1').value as { richText: { text: string }[] };
-    expect(title.richText.map((r) => r.text.trim())).toEqual(['1-1', '공통국어2', '응시현황표']);
+    expect(title.richText.map((r) => r.text.trim())).toEqual(['[1학년]', '1-1', '공통국어2', '응시현황표']);
     expect(ws.getCell('H4').value).toBe(28);
     expect(ws.getCell('I4').value).toBe('10101 ~ 10128');
     expect(ws.getCell('G7').value).toBe('응시2도움실');

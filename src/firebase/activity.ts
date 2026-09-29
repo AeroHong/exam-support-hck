@@ -29,6 +29,7 @@ export const ACTIONS = {
   exam_open: '시험 자료 열기',
   exam_save: '데이터 저장',
   exam_restore: '버전 복구',
+  plan_import: '시간표(hwpx) 가져오기',
   exam_delete: '시험 자료 삭제',
   print: '인쇄/PDF',
   export_xlsx: 'XLSX 내보내기',

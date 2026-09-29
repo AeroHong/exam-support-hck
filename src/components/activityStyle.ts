@@ -9,6 +9,7 @@ export const SHORT_ACTION: Record<ActionType, string> = {
   exam_open: '자료 열기',
   exam_save: '저장',
   exam_restore: '버전 복구',
+  plan_import: '시간표 가져옴',
   exam_delete: '자료 삭제',
   print: '인쇄',
   export_xlsx: 'XLSX',
@@ -41,6 +42,7 @@ export function conciseChange(l: Pick<ActivityLog, 'summary' | 'details'>): stri
 export const ACTION_COLOR: Partial<Record<ActionType, 'primary' | 'secondary' | 'warning' | 'error' | 'info' | 'success'>> = {
   exam_create: 'primary',
   exam_replace: 'warning',
+  plan_import: 'warning',
   exam_save: 'primary',
   exam_delete: 'error',
   print: 'success',

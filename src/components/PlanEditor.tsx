@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
+  Alert,
   Autocomplete,
   Box,
   Button,
@@ -11,10 +12,12 @@ import {
   TableCell,
   TableHead,
   TableRow,
+  Stack,
   TextField,
   Tooltip,
   Typography,
 } from '@mui/material';
+import UploadFileIcon from '@mui/icons-material/UploadFile';
 import AddIcon from '@mui/icons-material/Add';
 import CloseIcon from '@mui/icons-material/Close';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
@@ -22,6 +25,10 @@ import ErrorOutlineIcon from '@mui/icons-material/ErrorOutlined';
 import type { ParsedWorkbook, PlanRow } from '../core';
 import { addPlanRow, findSubjectColumn, removePlanRow, updatePlanRow } from '../core';
 import type { EditFocus } from './useOpenIssue';
+import { PlanImportDialog, readHwpxTimetable } from './PlanImportDialog';
+import type { TimetableResult } from '../core';
+import { logActivity } from '../firebase/activity';
+import { useExamStore } from '../store/examStore';
 
 const TIME_RANGE = /^(\d{1,2}):(\d{2})\s*~\s*(\d{1,2}):(\d{2})$/;
 
@@ -72,6 +79,31 @@ interface Props {
 
 export function PlanEditor({ workbook, canEdit, onEdit, focus }: Props) {
   const [flashRow, setFlashRow] = useState<number | null>(null);
+  const [imported, setImported] = useState<{ fileName: string; timetable: TimetableResult } | null>(null);
+  const [importMsg, setImportMsg] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  /** 한글 시간표(hwpx) 읽기 — 연도는 지금 시험 계획의 날짜에서 가져온다 */
+  const readTimetable = async (file: File | undefined) => {
+    if (!file) return;
+    setImportMsg(null);
+    try {
+      const year = Number(workbook.plan.find((p) => /^\d{4}-/.test(p.dateStr))?.dateStr.slice(0, 4)) || new Date().getFullYear();
+      const timetable = await readHwpxTimetable(file, year);
+      if (timetable.entries.length === 0) throw new Error(timetable.issues[0] ?? '시간표에서 시험을 찾지 못했습니다.');
+      setImported({ fileName: file.name, timetable });
+    } catch (e) {
+      setImportMsg({ kind: 'error', text: `시간표를 읽지 못했습니다: ${(e as Error).message}` });
+    }
+  };
+
+  const applyImport = (plan: PlanRow[], summary: string, details: string[]) => {
+    onEdit((wb) => ({ ...wb, plan }));
+    const { examId, title } = useExamStore.getState();
+    logActivity({ action: 'plan_import', examId, examTitle: title, summary: `${summary} (저장 전)`, details });
+    setImported(null);
+    setImportMsg({ kind: 'success', text: `시간표 내용으로 시험 계획을 바꿨습니다 — ${summary}. 확인 후 위의 '저장'을 누르세요.` });
+  };
 
   // 데이터 검증에서 이동해 오면 그 행을 가운데로 보이고 잠깐 강조
   useEffect(() => {
@@ -86,6 +118,41 @@ export function PlanEditor({ workbook, canEdit, onEdit, focus }: Props) {
   const update = (i: number, patch: Partial<PlanRow>) => onEdit((wb) => updatePlanRow(wb, i, patch));
 
   return (
+    <Stack spacing={1.5}>
+    {canEdit && (
+      <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+        <Button variant="outlined" size="small" startIcon={<UploadFileIcon />} onClick={() => fileRef.current?.click()}>
+          한글 시간표(hwpx) 가져오기
+        </Button>
+        <Typography variant="caption" color="text.secondary">
+          업무 담당자가 만든 시험 시간표 한글 파일을 그대로 올리면, 시험 계획과 비교해 바뀌는 것만 확인하고 적용할 수 있습니다.
+        </Typography>
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".hwpx"
+          hidden
+          onChange={(e) => {
+            readTimetable(e.target.files?.[0]);
+            e.target.value = '';
+          }}
+        />
+      </Stack>
+    )}
+    {importMsg && (
+      <Alert severity={importMsg.kind} onClose={() => setImportMsg(null)}>
+        {importMsg.text}
+      </Alert>
+    )}
+    {imported && (
+      <PlanImportDialog
+        fileName={imported.fileName}
+        timetable={imported.timetable}
+        workbook={workbook}
+        onClose={() => setImported(null)}
+        onApply={applyImport}
+      />
+    )}
     <Paper variant="outlined" sx={{ overflowX: 'auto' }}>
       <Table size="small" sx={{ minWidth: 960, '& td': { py: 0.25 }, '& th': { bgcolor: '#f1f5f2', color: '#24503a', fontWeight: 600 } }}>
         <TableHead>
@@ -217,5 +284,6 @@ export function PlanEditor({ workbook, canEdit, onEdit, focus }: Props) {
         </Box>
       )}
     </Paper>
+    </Stack>
   );
 }

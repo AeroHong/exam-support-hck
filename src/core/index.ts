@@ -11,3 +11,5 @@ export * from './editWorkbook';
 export * from './exportWorkbook';
 export * from './diffWorkbook';
 export * from './mergeWorkbook';
+export * from './hwpxTimetable';
+export * from './planImport';

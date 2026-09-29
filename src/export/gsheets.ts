@@ -1,7 +1,7 @@
 // Google 스프레드시트 내보내기 — legacy code.gs buildSheetRequests를 응시현황표양식0923 배치로 옮긴 것
 import type { RoomSheet, SubjectRoster } from '../core';
 import { makeHakbeon, SEAT_ROWS, seatRowHeightMm, SUMMARY_NOTES, summarize } from '../core';
-import { SHEET_COLORS } from './theme';
+import { gradeTheme, SHEET_COLORS } from './theme';
 import { subjectFileName } from './xlsx';
 
 type Req = Record<string, unknown>;
@@ -67,14 +67,22 @@ function outline(sheetId: number, r1: number, c1: number, r2: number, c2: number
 }
 
 // 글자는 모두 검정·굵게 (boxFormat 기본값), 머리글은 배경색으로만 구분
-const HEAD: Fmt = { bg: C.headBg, size: 9 };
-const LIST_HEAD: Fmt = { bg: C.listHeadBg, size: 9 };
-const SUM_HEAD: Fmt = { bg: C.sumHeadBg, size: 9 };
+/** 학년별 머리글 색 */
+function headFormats(grade: string) {
+  const t = gradeTheme(grade);
+  return {
+    accent: t.accent,
+    HEAD: { bg: t.headBg, size: 9 } as Fmt,
+    LIST_HEAD: { bg: t.listHeadBg, size: 9 } as Fmt,
+    SUM_HEAD: { bg: t.sumHeadBg, size: 9 } as Fmt,
+  };
+}
 const MM_TO_PX = 3.78;
 
 /** 제목: 고사실 · 과목 · 응시현황표 (모두 검정·굵게, 크기만 다르게) */
-function titleCell(roomName: string, subject: string, kind: string) {
-  const text = `${roomName}   ${subject}   ${kind}`;
+function titleCell(grade: string, roomName: string, subject: string, kind: string) {
+  const prefix = `[${grade}]  `; // 흑백 인쇄에서도 학년 구분
+  const text = `${prefix}${roomName}   ${subject}   ${kind}`;
   const run = (startIndex: number, color: Color, fontSize: number, bold: boolean) => ({
     startIndex,
     format: { foregroundColor: color, fontSize, bold },
@@ -82,9 +90,10 @@ function titleCell(roomName: string, subject: string, kind: string) {
   return {
     userEnteredValue: { stringValue: text },
     textFormatRuns: [
-      run(0, rgb(C.ink), 20, true),
-      run(roomName.length + 3, rgb(C.ink), 18, true),
-      run(roomName.length + subject.length + 6, rgb(C.ink), 14, true),
+      run(0, rgb(C.ink), 14, true),
+      run(prefix.length, rgb(C.ink), 20, true),
+      run(prefix.length + roomName.length + 3, rgb(C.ink), 18, true),
+      run(prefix.length + roomName.length + subject.length + 6, rgb(C.ink), 14, true),
     ],
   };
 }
@@ -97,6 +106,7 @@ function toCell(v: Cell) {
 /** 현황표 1장(대기실은 50명 단위로 여러 장)의 시트 추가 + 서식 요청 */
 function sheetRequests(firstSheetId: number, sheet: RoomSheet, isFirst: boolean): { requests: Req[]; count: number } {
   const sum = summarize(sheet);
+  const { accent, HEAD, LIST_HEAD, SUM_HEAD } = headFormats(sheet.grade);
   const requests: Req[] = [];
 
   sum.pages.forEach((students, p) => {
@@ -139,7 +149,7 @@ function sheetRequests(firstSheetId: number, sheet: RoomSheet, isFirst: boolean)
     requests.push({ mergeCells: { range: range(sid, 0, 0, 1, 9), mergeType: 'MERGE_ALL' } });
     requests.push({
       updateCells: {
-        rows: [{ values: [titleCell(sheet.roomName, sheet.subject, kind)] }],
+        rows: [{ values: [titleCell(sheet.grade, sheet.roomName, sheet.subject, kind)] }],
         fields: 'userEnteredValue,textFormatRuns',
         start: { sheetId: sid, rowIndex: 0, columnIndex: 0 },
       },
@@ -151,7 +161,7 @@ function sheetRequests(firstSheetId: number, sheet: RoomSheet, isFirst: boolean)
           userEnteredFormat: {
             horizontalAlignment: 'CENTER',
             verticalAlignment: 'MIDDLE',
-            borders: { bottom: { style: 'SOLID_MEDIUM', color: rgb(C.accent) } },
+            borders: { bottom: { style: 'SOLID_THICK', color: rgb(accent) } },
           },
         },
         fields: 'userEnteredFormat(horizontalAlignment,verticalAlignment,borders)',

@@ -1,5 +1,6 @@
 import type { RoomSheet } from '../../core';
 import { makeHakbeon, SEAT_ROWS, seatRowHeightMm, SUMMARY_NOTES, summarize } from '../../core';
+import { gradeTheme } from '../theme';
 import './roomSheet.css';
 
 const COLS = {
@@ -23,14 +24,24 @@ export function RoomSheetView({ sheet }: { sheet: RoomSheet }) {
   const sum = summarize(sheet);
   const total = sum.pages.length;
   const kindLabel = sheet.kind === 'waiting' ? '대기실 현황표' : '응시현황표';
+  const t = gradeTheme(sheet.grade);
+  // 학년별 색 — roomSheet.css의 변수를 덮어쓴다
+  const gradeVars = {
+    '--accent': `#${t.accent}`,
+    '--head-bg': `#${t.headBg}`,
+    '--list-head-bg': `#${t.listHeadBg}`,
+    '--sum-head-bg': `#${t.sumHeadBg}`,
+    '--badge-bg': `#${t.badgeBg}`,
+  } as React.CSSProperties;
 
   return (
     <>
       {sum.pages.map((students, pageIdx) => {
         const rowH = `${seatRowHeightMm(students.length)}mm`;
         return (
-          <div className="rs-page" key={pageIdx}>
+          <div className="rs-page" key={pageIdx} style={gradeVars}>
             <div className="rs-title">
+              <span className="rs-grade-badge">{sheet.grade}</span>
               <span className="rs-title-room">{sheet.roomName}</span>
               <span className="rs-title-subject">{sheet.subject}</span>
               <span className="rs-title-kind">{kindLabel}</span>

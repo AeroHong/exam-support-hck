@@ -2,7 +2,7 @@ import ExcelJS from 'exceljs';
 import JSZip from 'jszip';
 import type { RoomSheet, SubjectRoster } from '../core';
 import { makeHakbeon, SEAT_ROWS, seatRowHeightMm, SUMMARY_NOTES, summarize } from '../core';
-import { SHEET_COLORS, SHEET_FONT } from './theme';
+import { gradeTheme, SHEET_COLORS, SHEET_FONT } from './theme';
 
 const C = SHEET_COLORS;
 const argb = (hex: string) => `FF${hex}`;
@@ -42,9 +42,16 @@ function outline(ws: ExcelJS.Worksheet, r1: number, c1: number, r2: number, c2: 
 }
 
 // 글자는 모두 검정·굵게 (style 기본값), 머리글은 배경색으로만 구분
-const HEAD: CellStyle = { fill: C.headBg, size: 9 };
-const LIST_HEAD: CellStyle = { fill: C.listHeadBg, size: 9 };
-const SUM_HEAD: CellStyle = { fill: C.sumHeadBg, size: 9 };
+/** 학년별 머리글 색 */
+function headStyles(grade: string) {
+  const t = gradeTheme(grade);
+  return {
+    accent: t.accent,
+    HEAD: { fill: t.headBg, size: 9 } as CellStyle,
+    LIST_HEAD: { fill: t.listHeadBg, size: 9 } as CellStyle,
+    SUM_HEAD: { fill: t.sumHeadBg, size: 9 } as CellStyle,
+  };
+}
 const MM_TO_PT = 2.835;
 
 function safeSheetName(name: string, used: Set<string>): string {
@@ -57,6 +64,7 @@ function safeSheetName(name: string, used: Set<string>): string {
 
 function addRoomSheet(wb: ExcelJS.Workbook, sheet: RoomSheet, used: Set<string>) {
   const sum = summarize(sheet);
+  const { accent, HEAD, LIST_HEAD, SUM_HEAD } = headStyles(sheet.grade);
   sum.pages.forEach((students, pageIdx) => {
     const name = safeSheetName(sum.pages.length > 1 ? `${sheet.roomName}(${pageIdx + 1})` : sheet.roomName, used);
     const ws = wb.addWorksheet(name, {
@@ -79,13 +87,14 @@ function addRoomSheet(wb: ExcelJS.Workbook, sheet: RoomSheet, used: Set<string>)
     const pageNote = sum.pages.length > 1 ? `  (${pageIdx + 1}/${sum.pages.length})` : '';
     title.value = {
       richText: [
+        { text: `[${sheet.grade}]  `, font: { name: SHEET_FONT, size: 14, bold: true, color: { argb: argb(C.ink) } } },
         { text: sheet.roomName + '   ', font: { name: SHEET_FONT, size: 20, bold: true, color: { argb: argb(C.ink) } } },
         { text: sheet.subject + '   ', font: { name: SHEET_FONT, size: 18, bold: true, color: { argb: argb(C.ink) } } },
         { text: (sheet.kind === 'waiting' ? '대기실 현황표' : '응시현황표') + pageNote, font: { name: SHEET_FONT, size: 14, bold: true, color: { argb: argb(C.ink) } } },
       ],
     };
     title.alignment = { horizontal: 'center', vertical: 'middle' };
-    title.border = { bottom: { style: 'medium', color: { argb: argb(C.accent) } } };
+    title.border = { bottom: { style: 'thick', color: { argb: argb(accent) } } };
     ws.getRow(1).height = 38;
 
     // 3~4행 머리글
