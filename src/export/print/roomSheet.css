@@ -1,51 +1,110 @@
-/* 응시현황표양식0923 재현 — A4 세로 1장 */
+/* 응시현황표 — 0923 양식 구조를 유지한 A4 세로 1장. 색은 src/export/theme.ts와 같다. */
 .rs-page {
+  --ink: #1f2a24;
+  --muted: #6b7770;
+  --accent: #2e6b4f;
+  --line-strong: #3a4540;
+  --line-soft: #c9d3cd;
+  --head-bg: #e6f0ea;
+  --head-ink: #24503a;
+  --list-head-bg: #f5eee3;
+  --list-head-ink: #5b4a36;
+  --sum-head-bg: #e3f1ee;
+  --sum-head-ink: #1f5a4e;
+  --zebra: #f7f9f8;
+
   width: 210mm;
   height: 296mm; /* 297mm면 반올림 오차로 빈 페이지가 끼는 경우가 있음 */
-  padding: 8mm 9mm 6mm;
+  padding: 9mm 10mm 7mm;
   box-sizing: border-box;
   background: #fff;
-  color: #000;
-  font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+  color: var(--ink);
+  font-family: 'Pretendard', 'Malgun Gothic', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
   font-size: 9pt;
+  font-variant-numeric: tabular-nums;
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
+
+/* 제목: 고사실 · 과목 · 응시현황표 */
 .rs-title {
-  text-align: center;
-  font-size: 18pt;
-  font-weight: 700;
-  height: 11mm;
-  line-height: 11mm;
-  margin-bottom: 3mm;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 3.5mm;
+  padding-bottom: 2.5mm;
+  margin-bottom: 4mm;
+  border-bottom: 0.6mm solid var(--accent);
   white-space: nowrap;
 }
-.rs-title small { font-size: 10pt; font-weight: 400; }
-.rs-body { display: flex; gap: 4mm; align-items: flex-start; }
-.rs-left { flex: 0 0 118mm; }
-.rs-right { flex: 1; }
-.rs-table { border-collapse: collapse; width: 100%; table-layout: fixed; }
-.rs-table th, .rs-table td {
-  border: 0.8pt solid #000;
+.rs-title-room { font-size: 20pt; font-weight: 800; color: var(--accent); letter-spacing: -0.02em; }
+.rs-title-subject { font-size: 18pt; font-weight: 700; letter-spacing: -0.02em; }
+.rs-title-kind { font-size: 13pt; font-weight: 500; color: var(--muted); }
+.rs-title-page { font-size: 10pt; font-weight: 500; color: var(--muted); }
+
+.rs-body { display: flex; gap: 5mm; align-items: flex-start; }
+.rs-left { flex: 0 0 116mm; }
+.rs-right { flex: 1; min-width: 0; }
+
+/* 표 공통: 바깥선은 진하게, 안쪽선은 옅게 */
+.rs-table {
+  border-collapse: collapse;
+  width: 100%;
+  table-layout: fixed;
+  border: 0.35mm solid var(--line-strong);
+}
+.rs-table th,
+.rs-table td {
+  border: 0.15mm solid var(--line-soft);
   text-align: center;
   vertical-align: middle;
-  padding: 0 1mm;
+  padding: 0 1.2mm;
   overflow: hidden;
 }
-.rs-head th { background: #d9ead3; height: 8.5mm; }
-.rs-head td { height: 9mm; white-space: pre-line; line-height: 1.2; }
-.rs-list th { background: #fce5cd; height: 7mm; }
-.rs-list td { height: 4.7mm; line-height: 4.4mm; font-size: 8.8pt; padding-top: 0; padding-bottom: 0; }
-.rs-sum th { background: #cdf2e4; font-weight: 700; height: 8.5mm; }
-.rs-sum th.rs-sub { background: #cdf2e4; }
-.rs-sum td { height: 8.5mm; white-space: pre-line; line-height: 1.25; font-size: 8pt; }
-.rs-sum td.rs-count { font-size: 10pt; }
+.rs-table th { font-weight: 600; font-size: 8.3pt; letter-spacing: -0.01em; }
+
+.rs-head th { background: var(--head-bg); color: var(--head-ink); height: 9mm; line-height: 1.25; }
+.rs-head td { height: 10.5mm; white-space: pre-line; line-height: 1.3; font-size: 9.5pt; }
+.rs-head td.rs-strong { font-weight: 700; font-size: 11pt; }
+
+.rs-list thead th {
+  background: var(--list-head-bg);
+  color: var(--list-head-ink);
+  height: 7.5mm;
+  border-bottom: 0.3mm solid var(--line-strong);
+}
+.rs-list td { font-size: 9.5pt; line-height: 1.2; padding-top: 0; padding-bottom: 0; }
+.rs-list tbody tr:nth-child(even) td { background: var(--zebra); }
+.rs-list td.rs-seat { color: var(--muted); font-size: 8.5pt; }
+.rs-list td.rs-name { font-weight: 600; letter-spacing: 0.02em; }
+.rs-box {
+  display: inline-block;
+  width: 3.4mm;
+  height: 3.4mm;
+  border: 0.25mm solid var(--line-strong);
+  border-radius: 0.6mm;
+  vertical-align: middle;
+}
+
+.rs-sum thead th { background: var(--sum-head-bg); color: var(--sum-head-ink); height: 8mm; }
+.rs-sum th.rs-sub { background: var(--sum-head-bg); color: var(--sum-head-ink); height: 9.5mm; font-size: 8pt; }
+.rs-sum td { white-space: pre-line; line-height: 1.3; font-size: 7.8pt; padding: 0.8mm 1.2mm; }
+.rs-sum td.rs-count { font-size: 11pt; font-weight: 700; }
+.rs-sum td.rs-range { font-size: 8.3pt; font-weight: 600; letter-spacing: -0.01em; }
+
 .rs-gap { height: 4mm; }
-.rs-footer { margin-top: auto; text-align: right; font-size: 7.5pt; color: #555; }
+.rs-footer {
+  margin-top: auto;
+  padding-top: 2mm;
+  display: flex;
+  justify-content: space-between;
+  font-size: 7.5pt;
+  color: var(--muted);
+}
 
 @media screen {
-  .rs-page { box-shadow: 0 1px 6px rgba(0, 0, 0, 0.25); margin: 0 auto 16px; }
+  .rs-page { box-shadow: 0 1px 6px rgba(0, 0, 0, 0.18); margin: 0 auto 16px; }
 }
 
 @media print {

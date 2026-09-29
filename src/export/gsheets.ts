@@ -1,6 +1,7 @@
 // Google 스프레드시트 내보내기 — legacy code.gs buildSheetRequests를 응시현황표양식0923 배치로 옮긴 것
 import type { RoomSheet, SubjectRoster } from '../core';
-import { makeHakbeon, SEAT_ROWS, summarize } from '../core';
+import { makeHakbeon, SEAT_ROWS, seatRowHeightMm, summarize } from '../core';
+import { SHEET_COLORS } from './theme';
 import { subjectFileName } from './xlsx';
 
 type Req = Record<string, unknown>;
@@ -11,9 +12,8 @@ const rgb = (hex: string) => ({
   green: parseInt(hex.slice(2, 4), 16) / 255,
   blue: parseInt(hex.slice(4, 6), 16) / 255,
 });
-const GREEN = rgb('D9EAD3');
-const ORANGE = rgb('FCE5CD');
-const MINT = rgb('CDF2E4');
+type Color = ReturnType<typeof rgb>;
+const C = SHEET_COLORS;
 
 const range = (sheetId: number, r1: number, c1: number, r2: number, c2: number) => ({
   sheetId,
@@ -23,24 +23,68 @@ const range = (sheetId: number, r1: number, c1: number, r2: number, c2: number) 
   endColumnIndex: c2,
 });
 
-const solid = { style: 'SOLID', width: 1, color: { red: 0, green: 0, blue: 0 } };
+const softLine = { style: 'SOLID', width: 1, color: rgb(C.lineSoft) };
+const strongLine = { style: 'SOLID_MEDIUM', color: rgb(C.lineStrong) };
 
-function boxFormat(sheetId: number, r1: number, c1: number, r2: number, c2: number, bg?: typeof GREEN, bold = false, fontSize = 10): Req {
+interface Fmt {
+  bg?: string;
+  ink?: string;
+  bold?: boolean;
+  size?: number;
+}
+
+/** 칸 서식 + 옅은 안쪽선 (0-based, 끝 미포함) */
+function boxFormat(sheetId: number, r1: number, c1: number, r2: number, c2: number, f: Fmt = {}): Req {
   return {
     repeatCell: {
       range: range(sheetId, r1, c1, r2, c2),
       cell: {
         userEnteredFormat: {
-          backgroundColor: bg,
+          backgroundColor: f.bg ? rgb(f.bg) : undefined,
           horizontalAlignment: 'CENTER',
           verticalAlignment: 'MIDDLE',
           wrapStrategy: 'WRAP',
-          textFormat: { bold, fontSize },
-          borders: { top: solid, bottom: solid, left: solid, right: solid },
+          textFormat: { bold: !!f.bold, fontSize: f.size ?? 10, foregroundColor: rgb(f.ink ?? C.ink) },
+          borders: { top: softLine, bottom: softLine, left: softLine, right: softLine },
         },
       },
       fields: 'userEnteredFormat(backgroundColor,horizontalAlignment,verticalAlignment,wrapStrategy,textFormat,borders)',
     },
+  };
+}
+
+/** 표 블록 바깥선만 진하게 */
+function outline(sheetId: number, r1: number, c1: number, r2: number, c2: number): Req {
+  return {
+    updateBorders: {
+      range: range(sheetId, r1, c1, r2, c2),
+      top: strongLine,
+      bottom: strongLine,
+      left: strongLine,
+      right: strongLine,
+    },
+  };
+}
+
+const HEAD: Fmt = { bg: C.headBg, ink: C.headInk, bold: true, size: 9 };
+const LIST_HEAD: Fmt = { bg: C.listHeadBg, ink: C.listHeadInk, bold: true, size: 9 };
+const SUM_HEAD: Fmt = { bg: C.sumHeadBg, ink: C.sumHeadInk, bold: true, size: 9 };
+const MM_TO_PX = 3.78;
+
+/** 제목: 고사실(강조색) · 과목 · 응시현황표(보조색) */
+function titleCell(roomName: string, subject: string, kind: string) {
+  const text = `${roomName}   ${subject}   ${kind}`;
+  const run = (startIndex: number, color: Color, fontSize: number, bold: boolean) => ({
+    startIndex,
+    format: { foregroundColor: color, fontSize, bold },
+  });
+  return {
+    userEnteredValue: { stringValue: text },
+    textFormatRuns: [
+      run(0, rgb(C.accent), 20, true),
+      run(roomName.length + 3, rgb(C.ink), 18, true),
+      run(roomName.length + subject.length + 6, rgb(C.muted), 13, false),
+    ],
   };
 }
 
@@ -67,10 +111,10 @@ function sheetRequests(firstSheetId: number, sheet: RoomSheet, isFirst: boolean)
     const sid = isFirst && p === 0 ? 0 : sheetId;
 
     const rows: Cell[][] = [];
-    rows.push([sum.title + (sum.pages.length > 1 ? ` (${p + 1}/${sum.pages.length})` : '')]);
+    rows.push([]); // 제목은 아래 textFormatRuns로 따로 넣는다
     rows.push([]);
     rows.push(['고사일\n고사시간', '고사실', '과목명(과목코드)', '학급', null, null, null, '인원수', '학번']);
-    rows.push([sum.dateTime, sheet.roomName, sum.subjectLabel, sum.classLabel, null, null, '재적인원', sum.enrolled, null]);
+    rows.push([sum.dateTime, sheet.roomName, sum.subjectLabel, sum.classLabel, null, null, '재적인원', sum.enrolled, sum.enrolledRange || null]);
     rows.push([null, null, null, null, null, null, '구분', '인원수', '학번']);
     for (let i = 0; i < lastRow - 6; i++) {
       const s = students[i];
@@ -88,25 +132,62 @@ function sheetRequests(firstSheetId: number, sheet: RoomSheet, isFirst: boolean)
       },
     });
 
+    const kind = (sheet.kind === 'waiting' ? '대기실 현황표' : '응시현황표') + (sum.pages.length > 1 ? `  (${p + 1}/${sum.pages.length})` : '');
     requests.push({ mergeCells: { range: range(sid, 0, 0, 1, 9), mergeType: 'MERGE_ALL' } });
+    requests.push({
+      updateCells: {
+        rows: [{ values: [titleCell(sheet.roomName, sheet.subject, kind)] }],
+        fields: 'userEnteredValue,textFormatRuns',
+        start: { sheetId: sid, rowIndex: 0, columnIndex: 0 },
+      },
+    });
     requests.push({
       repeatCell: {
         range: range(sid, 0, 0, 1, 9),
-        cell: { userEnteredFormat: { horizontalAlignment: 'CENTER', verticalAlignment: 'MIDDLE', textFormat: { bold: true, fontSize: 20 } } },
-        fields: 'userEnteredFormat(horizontalAlignment,verticalAlignment,textFormat)',
+        cell: {
+          userEnteredFormat: {
+            horizontalAlignment: 'CENTER',
+            verticalAlignment: 'MIDDLE',
+            borders: { bottom: { style: 'SOLID_MEDIUM', color: rgb(C.accent) } },
+          },
+        },
+        fields: 'userEnteredFormat(horizontalAlignment,verticalAlignment,borders)',
       },
     });
-    requests.push(boxFormat(sid, 2, 0, 3, 4, GREEN, true));
+
+    // 고사 정보 (A3:D4)
+    requests.push(boxFormat(sid, 2, 0, 3, 4, HEAD));
     requests.push(boxFormat(sid, 3, 0, 4, 4));
-    requests.push(boxFormat(sid, 2, 6, 3, 9, MINT, true));
-    requests.push(boxFormat(sid, 3, 6, 4, 7, MINT, true));
-    requests.push(boxFormat(sid, 3, 7, 4, 9));
-    requests.push(boxFormat(sid, 4, 6, 5, 9, MINT, true));
-    requests.push(boxFormat(sid, 5, 6, 5 + sum.rows.length, 7, MINT, true));
-    requests.push(boxFormat(sid, 5, 7, 5 + sum.rows.length, 8, undefined, false, 11));
-    requests.push(boxFormat(sid, 5, 8, 5 + sum.rows.length, 9, undefined, false, 8));
-    requests.push(boxFormat(sid, 5, 0, 6, 5, ORANGE, true));
-    if (students.length > 0) requests.push(boxFormat(sid, 6, 0, 6 + students.length, 5));
+    requests.push(boxFormat(sid, 3, 1, 4, 2, { bold: true, size: 11 }));
+    requests.push(outline(sid, 2, 0, 4, 4));
+    // 재적인원 (G3:I4)
+    requests.push(boxFormat(sid, 2, 6, 3, 9, SUM_HEAD));
+    requests.push(boxFormat(sid, 3, 6, 4, 7, SUM_HEAD));
+    requests.push(boxFormat(sid, 3, 7, 4, 8, { bold: true, size: 11 }));
+    requests.push(boxFormat(sid, 3, 8, 4, 9, { bold: true, size: 9 }));
+    requests.push(outline(sid, 2, 6, 4, 9));
+    // 요약표 (G5:I11)
+    requests.push(boxFormat(sid, 4, 6, 5, 9, SUM_HEAD));
+    requests.push(boxFormat(sid, 5, 6, 5 + sum.rows.length, 7, SUM_HEAD));
+    requests.push(boxFormat(sid, 5, 7, 5 + sum.rows.length, 8, { bold: true, size: 11 }));
+    requests.push(boxFormat(sid, 5, 8, 5 + sum.rows.length, 9, { size: 8 }));
+    requests.push(outline(sid, 4, 6, 5 + sum.rows.length, 9));
+    // 명단 (A6:E…)
+    requests.push(boxFormat(sid, 5, 0, 6, 5, LIST_HEAD));
+    if (students.length > 0) {
+      requests.push(boxFormat(sid, 6, 0, 6 + students.length, 5));
+      requests.push(boxFormat(sid, 6, 0, 6 + students.length, 1, { ink: C.muted, size: 9 }));
+      requests.push(boxFormat(sid, 6, 2, 6 + students.length, 3, { bold: true }));
+      requests.push({
+        addBanding: {
+          bandedRange: {
+            range: range(sid, 6, 0, 6 + students.length, 5),
+            rowProperties: { firstBandColor: rgb('FFFFFF'), secondBandColor: rgb(C.zebra) },
+          },
+        },
+      });
+    }
+    requests.push(outline(sid, 5, 0, 6 + students.length, 5));
     if (students.length > 0) {
       requests.push({
         setDataValidation: {
@@ -121,7 +202,7 @@ function sheetRequests(firstSheetId: number, sheet: RoomSheet, isFirst: boolean)
       [1, 2, 8],
       [2, 4, 38],
       [4, 6, 28],
-      [6, lastRow, 19],
+      [6, lastRow, Math.round(seatRowHeightMm(students.length) * MM_TO_PX)],
     ];
     for (const [s, e, px] of heights) {
       requests.push({

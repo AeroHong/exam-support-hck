@@ -1,24 +1,50 @@
 import ExcelJS from 'exceljs';
 import JSZip from 'jszip';
 import type { RoomSheet, SubjectRoster } from '../core';
-import { makeHakbeon, SEAT_ROWS, summarize } from '../core';
+import { makeHakbeon, SEAT_ROWS, seatRowHeightMm, summarize } from '../core';
+import { SHEET_COLORS, SHEET_FONT } from './theme';
 
-// 응시현황표양식0923 색상
-const GREEN = 'FFD9EAD3';
-const ORANGE = 'FFFCE5CD';
-const MINT = 'FFCDF2E4';
-const FONT = 'Malgun Gothic';
+const C = SHEET_COLORS;
+const argb = (hex: string) => `FF${hex}`;
 
-const thin: Partial<ExcelJS.Border> = { style: 'thin', color: { argb: 'FF000000' } };
-const box: Partial<ExcelJS.Borders> = { top: thin, left: thin, bottom: thin, right: thin };
+const soft: Partial<ExcelJS.Border> = { style: 'thin', color: { argb: argb(C.lineSoft) } };
+const strong: Partial<ExcelJS.Border> = { style: 'medium', color: { argb: argb(C.lineStrong) } };
 const center: Partial<ExcelJS.Alignment> = { horizontal: 'center', vertical: 'middle', wrapText: true };
 
-function style(cell: ExcelJS.Cell, opts: { fill?: string; bold?: boolean; size?: number } = {}) {
-  cell.border = box;
-  cell.alignment = center;
-  cell.font = { name: FONT, size: opts.size ?? 10, bold: opts.bold };
-  if (opts.fill) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: opts.fill } };
+interface CellStyle {
+  fill?: string;
+  ink?: string;
+  bold?: boolean;
+  size?: number;
 }
+
+function style(cell: ExcelJS.Cell, opts: CellStyle = {}) {
+  cell.border = { top: soft, left: soft, bottom: soft, right: soft };
+  cell.alignment = center;
+  cell.font = { name: SHEET_FONT, size: opts.size ?? 10, bold: opts.bold, color: { argb: argb(opts.ink ?? C.ink) } };
+  if (opts.fill) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: argb(opts.fill) } };
+}
+
+/** 표 블록 바깥선만 진하게 (1-based 행·열) */
+function outline(ws: ExcelJS.Worksheet, r1: number, c1: number, r2: number, c2: number) {
+  for (let r = r1; r <= r2; r++) {
+    for (let c = c1; c <= c2; c++) {
+      const cell = ws.getCell(r, c);
+      cell.border = {
+        ...cell.border,
+        ...(r === r1 ? { top: strong } : {}),
+        ...(r === r2 ? { bottom: strong } : {}),
+        ...(c === c1 ? { left: strong } : {}),
+        ...(c === c2 ? { right: strong } : {}),
+      };
+    }
+  }
+}
+
+const HEAD: CellStyle = { fill: C.headBg, ink: C.headInk, bold: true, size: 9 };
+const LIST_HEAD: CellStyle = { fill: C.listHeadBg, ink: C.listHeadInk, bold: true, size: 9 };
+const SUM_HEAD: CellStyle = { fill: C.sumHeadBg, ink: C.sumHeadInk, bold: true, size: 9 };
+const MM_TO_PT = 2.835;
 
 function safeSheetName(name: string, used: Set<string>): string {
   const base = name.replace(/[\\/?*[\]:]/g, '_').slice(0, 28) || 'sheet';
@@ -49,56 +75,76 @@ function addRoomSheet(wb: ExcelJS.Workbook, sheet: RoomSheet, used: Set<string>)
     // 1행 제목
     ws.mergeCells('A1:I1');
     const title = ws.getCell('A1');
-    title.value = sum.title + (sum.pages.length > 1 ? ` (${pageIdx + 1}/${sum.pages.length})` : '');
-    title.font = { name: FONT, size: 20, bold: true };
+    const pageNote = sum.pages.length > 1 ? `  (${pageIdx + 1}/${sum.pages.length})` : '';
+    title.value = {
+      richText: [
+        { text: sheet.roomName + '   ', font: { name: SHEET_FONT, size: 20, bold: true, color: { argb: argb(C.accent) } } },
+        { text: sheet.subject + '   ', font: { name: SHEET_FONT, size: 18, bold: true, color: { argb: argb(C.ink) } } },
+        { text: (sheet.kind === 'waiting' ? '대기실 현황표' : '응시현황표') + pageNote, font: { name: SHEET_FONT, size: 13, color: { argb: argb(C.muted) } } },
+      ],
+    };
     title.alignment = { horizontal: 'center', vertical: 'middle' };
-    ws.getRow(1).height = 36;
+    title.border = { bottom: { style: 'medium', color: { argb: argb(C.accent) } } };
+    ws.getRow(1).height = 38;
 
     // 3~4행 머리글
     (['고사일\n고사시간', '고사실', '과목명(과목코드)', '학급'] as const).forEach((v, i) => {
       const c = ws.getRow(3).getCell(i + 1);
       c.value = v;
-      style(c, { fill: GREEN, bold: true });
+      style(c, HEAD);
     });
     [sum.dateTime, sheet.roomName, sum.subjectLabel, sum.classLabel].forEach((v, i) => {
       const c = ws.getRow(4).getCell(i + 1);
       c.value = v;
-      style(c, { size: i === 3 && v.length > 12 ? 8 : 10 });
+      style(c, { size: i === 3 && v.length > 12 ? 8 : i === 1 ? 11 : 10, bold: i === 1 });
     });
+    outline(ws, 3, 1, 4, 4);
 
     // G3:I4 재적인원
-    style(ws.getCell('G3'), { fill: MINT });
-    style(Object.assign(ws.getCell('H3'), { value: '인원수' }), { fill: MINT, bold: true });
-    style(Object.assign(ws.getCell('I3'), { value: '학번' }), { fill: MINT, bold: true });
-    style(Object.assign(ws.getCell('G4'), { value: '재적인원' }), { fill: MINT, bold: true });
-    style(Object.assign(ws.getCell('H4'), { value: sum.enrolled }), { size: 11 });
-    style(ws.getCell('I4'));
+    style(ws.getCell('G3'), SUM_HEAD);
+    style(Object.assign(ws.getCell('H3'), { value: '인원수' }), SUM_HEAD);
+    style(Object.assign(ws.getCell('I3'), { value: '학번' }), SUM_HEAD);
+    style(Object.assign(ws.getCell('G4'), { value: '재적인원' }), SUM_HEAD);
+    style(Object.assign(ws.getCell('H4'), { value: sum.enrolled }), { size: 11, bold: true });
+    style(Object.assign(ws.getCell('I4'), { value: sum.enrolledRange || null }), { size: 9, bold: true });
+    outline(ws, 3, 7, 4, 9);
 
     // G5:I11 요약표
-    style(Object.assign(ws.getCell('G5'), { value: '구분' }), { fill: MINT, bold: true });
-    style(Object.assign(ws.getCell('H5'), { value: '인원수' }), { fill: MINT, bold: true });
-    style(Object.assign(ws.getCell('I5'), { value: '학번' }), { fill: MINT, bold: true });
+    style(Object.assign(ws.getCell('G5'), { value: '구분' }), SUM_HEAD);
+    style(Object.assign(ws.getCell('H5'), { value: '인원수' }), SUM_HEAD);
+    style(Object.assign(ws.getCell('I5'), { value: '학번' }), SUM_HEAD);
     sum.rows.forEach((r, i) => {
       const row = ws.getRow(6 + i);
-      style(Object.assign(row.getCell(7), { value: r.label }), { fill: MINT, bold: true });
-      style(Object.assign(row.getCell(8), { value: r.count === '' ? null : r.count }), { size: 11 });
+      style(Object.assign(row.getCell(7), { value: r.label }), SUM_HEAD);
+      style(Object.assign(row.getCell(8), { value: r.count === '' ? null : r.count }), { size: 11, bold: true });
       style(Object.assign(row.getCell(9), { value: r.detail.replace(/\n/g, ', ') || null }), { size: 8 });
     });
+    outline(ws, 5, 7, 5 + sum.rows.length, 9);
 
     // 6행 명단 머리글, 7행부터 응시 인원만큼만 명단
     ['좌석번호', '학번', '이름', '성별', '결시체크'].forEach((v, i) => {
       const c = ws.getRow(6).getCell(i + 1);
       c.value = v;
-      style(c, { fill: ORANGE, bold: true });
+      style(c, LIST_HEAD);
     });
+    const rowPt = seatRowHeightMm(students.length) * MM_TO_PT;
     students.forEach((s, i) => {
       const row = ws.getRow(7 + i);
       const values = [pageIdx * SEAT_ROWS + i + 1, makeHakbeon(s.grade, s.ban, s.num), s.name, s.gender, '☐'];
-      values.forEach((v, ci) => style(Object.assign(row.getCell(ci + 1), { value: v })));
-      row.height = 15.5;
+      const zebra = i % 2 === 1 ? C.zebra : undefined;
+      values.forEach((v, ci) =>
+        style(Object.assign(row.getCell(ci + 1), { value: v }), {
+          fill: zebra,
+          ink: ci === 0 ? C.muted : C.ink,
+          bold: ci === 2,
+          size: ci === 0 ? 9 : 10,
+        }),
+      );
+      row.height = rowPt;
     });
+    outline(ws, 6, 1, 6 + students.length, 5);
 
-    ws.getRow(2).height = 6;
+    ws.getRow(2).height = 8;
     ws.getRow(3).height = 26;
     ws.getRow(4).height = 30;
     ws.getRow(5).height = 22;

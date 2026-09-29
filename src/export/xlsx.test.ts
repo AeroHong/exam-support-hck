@@ -18,15 +18,17 @@ describe.skipIf(!existsSync(fixture))('xlsx 내보내기', () => {
     await wb.xlsx.load(buf);
     expect(wb.worksheets.map((w) => w.name)).toEqual(['1-1', '1-2', '1-3', '1-4', '1-5', '1-6', '1-7', '도움실', '교과2']);
     const ws = wb.getWorksheet('1-1')!;
-    expect(ws.getCell('A1').value).toBe('1-1  공통국어2  응시현황표');
+    const title = ws.getCell('A1').value as { richText: { text: string }[] };
+    expect(title.richText.map((r) => r.text.trim())).toEqual(['1-1', '공통국어2', '응시현황표']);
     expect(ws.getCell('H4').value).toBe(28);
+    expect(ws.getCell('I4').value).toBe('10101 ~ 10128');
     expect(ws.getCell('G7').value).toBe('응시2도움실');
     expect(ws.getCell('H7').value).toBe(1);
     expect(ws.getCell('B7').value).toBe('10101');
     // 응시 27명 → 7~33행까지만 명단, 그 아래 빈 행 없음
     expect(ws.getCell('A33').value).toBe(27);
-    expect(ws.getCell('A33').border?.top?.style).toBe('thin');
-    expect(ws.getCell('A34').border?.top).toBeUndefined();
+    expect(ws.getCell('A33').border?.bottom?.style).toBe('medium');
+    expect(ws.getCell('A34').border).toBeUndefined();
     expect(ws.pageSetup.printArea).toBe('A1:I33');
   });
 });

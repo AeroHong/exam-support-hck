@@ -14,6 +14,7 @@ export interface SheetSummary {
   subjectLabel: string; // "공통국어2(2)"
   classLabel: string;
   enrolled: number;
+  enrolledRange: string; // 재적 학생 첫 학번 ~ 마지막 학번
   rows: SummaryRow[];
   pages: Student[][]; // 50석 단위로 나눈 좌석 명단
 }
@@ -35,12 +36,19 @@ export function summarize(sheet: RoomSheet): SheetSummary {
   const sep = sheet.kind === 'separate' ? n : sheet.separate.length;
   const listOrBlank = (xs: Student[], own: boolean) => (own ? '' : xs.map(studentLabel).join('\n'));
 
+  const hakbeons = [...sheet.main, ...sheet.doum, ...sheet.separate]
+    .map((s) => makeHakbeon(s.grade, s.ban, s.num))
+    .sort();
+  const enrolledRange =
+    hakbeons.length === 0 ? '' : hakbeons.length === 1 ? hakbeons[0] : `${hakbeons[0]} ~ ${hakbeons[hakbeons.length - 1]}`;
+
   return {
     title: `${sheet.roomName}  ${sheet.subject}  ${sheet.kind === 'waiting' ? '대기실 현황표' : '응시현황표'}`,
     dateTime: `${sheet.dateStr}\n${sheet.timeRange}`,
     subjectLabel: sheet.code ? `${sheet.subject}(${sheet.code})` : sheet.subject,
     classLabel: sheet.classes.join(', '),
     enrolled: n + sheet.doum.length + sheet.separate.length,
+    enrolledRange,
     rows: [
       { label: '응시1교실', count: main, detail: '' },
       { label: '응시2도움실', count: doum, detail: listOrBlank(sheet.doum, sheet.kind === 'doum') },
@@ -51,4 +59,11 @@ export function summarize(sheet: RoomSheet): SheetSummary {
     ],
     pages: chunk(sheet.main, SEAT_ROWS),
   };
+}
+
+/** 명단 행 높이(mm). 기본 6.2mm, 인원이 많으면 A4 한 장에 들어가도록 줄인다. */
+export function seatRowHeightMm(count: number): number {
+  const LIST_AREA_MM = 228; // 머리글·요약·여백을 뺀 명단 영역 높이
+  if (count <= 0) return 6.2;
+  return Math.max(4.3, Math.min(6.2, LIST_AREA_MM / count - 0.3));
 }
