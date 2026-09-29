@@ -6,6 +6,7 @@ import {
   doc,
   getDocs,
   limit,
+  onSnapshot,
   orderBy,
   query,
   serverTimestamp,
@@ -88,6 +89,34 @@ export function addActivityToBatch(batch: WriteBatch, input: ActivityInput): Doc
   return ref;
 }
 
+function toLog(d: QueryDocumentSnapshot): ActivityLog {
+  const v = d.data();
+  return {
+    id: d.id,
+    action: v.action,
+    summary: v.summary,
+    details: v.details ?? [],
+    examId: v.examId,
+    examTitle: v.examTitle,
+    uid: v.uid,
+    email: v.email,
+    name: v.name,
+    // 막 쓴 기록은 서버 시각이 확정되기 전이라 비어 있을 수 있다 → 지금으로 표시
+    at: v.at?.toDate?.() ?? new Date(),
+  } as ActivityLog;
+}
+
+/** 최근 활동 실시간 구독 (최신순 n건). 반환값으로 구독 해제. */
+export function subscribeRecentActivity(n: number, onChange: (logs: ActivityLog[]) => void, onError?: (e: Error) => void): () => void {
+  if (!db) return () => {};
+  return onSnapshot(
+    query(logsCol(), orderBy('at', 'desc'), limit(n)),
+    { includeMetadataChanges: false },
+    (snap) => onChange(snap.docs.map(toLog)),
+    (e) => onError?.(e),
+  );
+}
+
 export interface ActivityFilter {
   email?: string;
   action?: ActionType;
@@ -107,20 +136,6 @@ export async function listActivity(
   else if (filter.action) conds.push(where('action', '==', filter.action));
   const q = query(logsCol(), ...conds, orderBy('at', 'desc'), ...(cursor ? [startAfter(cursor)] : []), limit(PAGE_SIZE));
   const snap = await getDocs(q);
-  const logs = snap.docs.map((d) => {
-    const v = d.data();
-    return {
-      id: d.id,
-      action: v.action,
-      summary: v.summary,
-      details: v.details ?? [],
-      examId: v.examId,
-      examTitle: v.examTitle,
-      uid: v.uid,
-      email: v.email,
-      name: v.name,
-      at: v.at?.toDate?.(),
-    } as ActivityLog;
-  });
+  const logs = snap.docs.map(toLog);
   return { logs, next: snap.docs.length === PAGE_SIZE ? snap.docs[snap.docs.length - 1] : undefined };
 }

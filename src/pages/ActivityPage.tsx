@@ -28,22 +28,7 @@ import DownloadIcon from '@mui/icons-material/Download';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import { ACTIONS, listActivity, type ActionType, type ActivityFilter, type ActivityLog } from '../firebase/activity';
 import { listExams, type ExamMeta } from '../firebase/repo';
-
-/** 활동 종류별 색 — 데이터를 바꾸는 활동은 진하게 */
-const ACTION_COLOR: Partial<Record<ActionType, 'primary' | 'secondary' | 'warning' | 'error' | 'info' | 'success'>> = {
-  exam_create: 'primary',
-  exam_replace: 'warning',
-  exam_save: 'primary',
-  exam_delete: 'error',
-  print: 'success',
-  export_xlsx: 'success',
-  export_gsheets: 'success',
-  download_source: 'info',
-  member_add: 'secondary',
-  member_role: 'secondary',
-  member_remove: 'error',
-  access_denied: 'error',
-};
+import { ACTION_COLOR } from '../components/activityStyle';
 
 const fmt = (d?: Date) =>
   d ? d.toLocaleString('ko-KR', { year: '2-digit', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }) : '';
