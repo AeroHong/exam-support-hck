@@ -146,6 +146,19 @@ export function WorkPage(_: { user: AppUser }) {
     record('print');
   };
 
+  /** 한시 기능: 선택한 과목의 '여분' 표지만 인쇄 */
+  const onPrintSpareOnly = () => {
+    setPrinting(printItemsOf(selected, true).filter((it) => it.kind === 'spare'));
+    const scope = mode === 'ALL' ? '전체' : `${MODES.find((m) => m.value === mode)?.label} ${mode === 'SUBJECT' ? labelOf(value) : value}`;
+    logActivity({
+      action: 'print',
+      examId,
+      examTitle: title,
+      summary: `${scope} · 여분 표지만 ${selected.length}장`,
+      details: selected.map((r) => `${r.dateStr} ${r.period}교시 ${r.grade} ${r.subject} — 여분`),
+    });
+  };
+
   const onXlsx = () =>
     run('XLSX 만들기', async () => {
       // ExcelJS가 커서 누를 때만 불러온다
@@ -225,6 +238,16 @@ export function WorkPage(_: { user: AppUser }) {
           </Typography>
           <Button variant="contained" startIcon={<PrintIcon />} disabled={!items.length} onClick={onPrint}>
             인쇄 / PDF
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<PrintIcon />}
+            disabled={!selected.length}
+            onClick={onPrintSpareOnly}
+            title="선택한 과목의 '여분' 표지만 인쇄합니다 (과목당 1장)"
+            sx={{ borderStyle: 'dashed', '&:hover': { borderStyle: 'dashed' } }}
+          >
+            여분만 인쇄
           </Button>
           <Button variant="outlined" startIcon={<GridOnIcon />} disabled={!selected.length} onClick={onXlsx}>
             XLSX
