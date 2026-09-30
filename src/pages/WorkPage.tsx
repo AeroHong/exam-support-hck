@@ -4,6 +4,7 @@ import {
   Box,
   Button,
   Checkbox,
+  FormControlLabel,
   Chip,
   LinearProgress,
   MenuItem,
@@ -22,7 +23,6 @@ import {
 import PrintIcon from '@mui/icons-material/Print';
 import GridOnIcon from '@mui/icons-material/GridOn';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
-import type { RoomSheet } from '../core';
 import { filterRosters, type FilterMode } from '../core';
 import { useExamStore } from '../store/examStore';
 import type { AppUser } from '../firebase/auth';
@@ -32,7 +32,7 @@ import { logActivity, type ActionType } from '../firebase/activity';
 import { IssuesPanel } from '../components/IssuesPanel';
 import { useOpenIssue } from '../components/useOpenIssue';
 import { SheetPreview } from '../components/SheetPreview';
-import { PrintRoot } from '../export/print/PrintRoot';
+import { PrintRoot, printItemsOf, type PrintItem } from '../export/print/PrintRoot';
 import type { GSheetsResult, GSheetsTarget } from '../export/gsheets';
 import { GSheetsDialog } from '../components/GSheetsDialog';
 
@@ -52,8 +52,10 @@ export function WorkPage(_: { user: AppUser }) {
   const [mode, setMode] = useState<FilterMode>('ALL');
   const [value, setValue] = useState('');
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
-  const [preview, setPreview] = useState<RoomSheet | null>(null);
-  const [printing, setPrinting] = useState<RoomSheet[] | null>(null);
+  const [preview, setPreview] = useState<PrintItem | null>(null);
+  const [printing, setPrinting] = useState<PrintItem[] | null>(null);
+  // 과목별 '여분' 표지 — 고사실별로 뽑을 때는 기본으로 뺀다
+  const [withSpare, setWithSpare] = useState(true);
   const [status, setStatus] = useState<{ kind: 'success' | 'error' | 'info'; text: string } | null>(null);
   const [progress, setProgress] = useState<number | null>(null);
   const [gsResult, setGsResult] = useState<GSheetsResult | null>(null);
@@ -80,13 +82,13 @@ export function WorkPage(_: { user: AppUser }) {
     [rosters, mode, value],
   );
   const selected = filtered.filter((r) => !excluded.has(r.subjectKey));
-  const selectedSheets = selected.flatMap((r) => r.sheets);
+  const items = useMemo(() => printItemsOf(selected, withSpare), [selected, withSpare]); // eslint-disable-line react-hooks/exhaustive-deps
   const skipped = rosters.filter((r) => r.skipped);
 
   useEffect(() => {
-    if (!preview || !selectedSheets.some((s) => s.key === preview.key)) setPreview(selectedSheets[0] ?? null);
+    if (!preview || !items.some((s) => s.key === preview.key)) setPreview(items[0] ?? null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtered]);
+  }, [filtered, withSpare]);
 
   // 인쇄 영역이 그려진 다음 인쇄 대화상자를 연다
   useEffect(() => {
@@ -134,13 +136,13 @@ export function WorkPage(_: { user: AppUser }) {
       action,
       examId,
       examTitle: title,
-      summary: `${scope} · ${selected.length}과목 ${selectedSheets.length}장${extra}`,
+      summary: `${scope} · ${selected.length}과목 ${items.length}장${withSpare ? '(여분 표지 포함)' : ''}${extra}`,
       details: selected.map((r) => `${r.dateStr} ${r.period}교시 ${r.grade} ${r.subject} — ${r.sheets.map((s) => s.roomName).join(', ')}`),
     });
   };
 
   const onPrint = () => {
-    setPrinting(selectedSheets);
+    setPrinting(items);
     record('print');
   };
 
@@ -148,10 +150,10 @@ export function WorkPage(_: { user: AppUser }) {
     run('XLSX 만들기', async () => {
       // ExcelJS가 커서 누를 때만 불러온다
       const { exportRostersToFile, downloadBlob } = await import('../export/xlsx');
-      const { blob, fileName } = await exportRostersToFile(selected);
+      const { blob, fileName } = await exportRostersToFile(selected, { withSpare });
       downloadBlob(blob, fileName);
       record('export_xlsx', ` · ${fileName}`);
-      return `${fileName} 다운로드 (${selected.length}과목, ${selectedSheets.length}장)`;
+      return `${fileName} 다운로드 (${selected.length}과목, ${items.length}장)`;
     });
 
   const onGSheets = (target: GSheetsTarget) => {
@@ -161,7 +163,7 @@ export function WorkPage(_: { user: AppUser }) {
       const token = await getGoogleAccessToken();
       const { exportToGoogleSheets } = await import('../export/gsheets');
       setProgress(0);
-      const res = await exportToGoogleSheets(token, selected, target, (d, t) => setProgress((d / t) * 100));
+      const res = await exportToGoogleSheets(token, selected, target, (d, t) => setProgress((d / t) * 100), { withSpare });
       setGsResult(res);
       record('export_gsheets', ` · ${res.folderUrl}`);
       return `Google Drive에 ${res.files.length}개 파일을 만들었습니다.`;
@@ -181,6 +183,7 @@ export function WorkPage(_: { user: AppUser }) {
             onChange={(_, m: FilterMode | null) => {
               if (!m) return;
               setMode(m);
+              setWithSpare(m !== 'ROOM');
               setValue('');
               setExcluded(new Set());
             }}
@@ -211,10 +214,16 @@ export function WorkPage(_: { user: AppUser }) {
             </TextField>
           )}
           <Box sx={{ flex: 1 }} />
+          <FormControlLabel
+            control={<Checkbox size="small" checked={withSpare} onChange={(e) => setWithSpare(e.target.checked)} />}
+            label={<Typography variant="body2">과목별 '여분' 표지</Typography>}
+            title="과목마다 A4 절반(접어서 봉투에 넣는) 크기의 '과목명 · 여분' 표지를 현황표 뒤에 붙입니다"
+            sx={{ mr: 0 }}
+          />
           <Typography variant="body2" color="text.secondary">
-            선택 {selected.length}과목 · {selectedSheets.length}장
+            선택 {selected.length}과목 · {items.length}장
           </Typography>
-          <Button variant="contained" startIcon={<PrintIcon />} disabled={!selectedSheets.length} onClick={onPrint}>
+          <Button variant="contained" startIcon={<PrintIcon />} disabled={!items.length} onClick={onPrint}>
             인쇄 / PDF
           </Button>
           <Button variant="outlined" startIcon={<GridOnIcon />} disabled={!selected.length} onClick={onXlsx}>
@@ -295,9 +304,18 @@ export function WorkPage(_: { user: AppUser }) {
                             color={KIND_COLOR[s.kind]}
                             variant={preview?.key === s.key ? 'filled' : 'outlined'}
                             label={`${s.roomName} ${s.main.length}${s.doum.length + s.separate.length ? `+${s.doum.length + s.separate.length}` : ''}`}
-                            onClick={() => setPreview(s)}
+                            onClick={() => setPreview({ kind: 'room', key: s.key, sheet: s })}
                           />
                         ))}
+                        {withSpare && (
+                          <Chip
+                            size="small"
+                            label="여분"
+                            variant={preview?.key === `${r.subjectKey}|여분` ? 'filled' : 'outlined'}
+                            onClick={() => setPreview({ kind: 'spare', key: `${r.subjectKey}|여분`, roster: r })}
+                            sx={{ borderStyle: 'dashed', fontWeight: 700 }}
+                          />
+                        )}
                       </Box>
                     </TableCell>
                   </TableRow>
@@ -307,15 +325,15 @@ export function WorkPage(_: { user: AppUser }) {
           )}
         </Paper>
 
-        <SheetPreview sheet={preview} />
+        <SheetPreview item={preview} />
       </Stack>
 
-      {printing && <PrintRoot sheets={printing} />}
+      {printing && <PrintRoot items={printing} />}
       {gsOpen && (
         <GSheetsDialog
           open
           defaultSubfolder={`${title || '응시현황표'} 응시현황표 ${new Date().toLocaleDateString('ko-KR')}`}
-          count={{ subjects: selected.length, sheets: selectedSheets.length }}
+          count={{ subjects: selected.length, sheets: items.length }}
           onClose={() => setGsOpen(false)}
           onConfirm={onGSheets}
         />

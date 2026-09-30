@@ -3,6 +3,7 @@ import JSZip from 'jszip';
 import type { RoomSheet, SubjectRoster } from '../core';
 import { makeHakbeon, SEAT_ROWS, seatRowHeightMm, SUMMARY_NOTES, summarize } from '../core';
 import { gradeTheme, SHEET_COLORS, SHEET_FONT } from './theme';
+import { SPARE_SHEET_NAME, SPARE_WORD_PT, spareInfo, spareSubjectSizePt } from './spare';
 
 const C = SHEET_COLORS;
 const argb = (hex: string) => `FF${hex}`;
@@ -182,25 +183,88 @@ export function subjectFileName(r: SubjectRoster, ext = 'xlsx'): string {
   return `${r.dateStr}_${r.grade}_${r.period}교시_${r.subject}.${ext}`.replace(/[\\/:*?"<>|]/g, '_');
 }
 
-export async function buildSubjectWorkbook(r: SubjectRoster): Promise<ArrayBuffer> {
+/**
+ * 과목별 '여분' 표지 시트 — A4 위쪽 절반(148mm ≈ 420pt)에 과목명·여분을 크게, 아래에 접는 선.
+ * 인쇄 배율 100%로 고정(한 페이지 맞춤을 쓰면 글자가 줄어든다).
+ */
+function addSpareSheet(wb: ExcelJS.Workbook, r: SubjectRoster, used: Set<string>) {
+  const t = gradeTheme(r.grade);
+  const ws = wb.addWorksheet(safeSheetName(SPARE_SHEET_NAME, used), {
+    pageSetup: {
+      paperSize: 9,
+      orientation: 'portrait',
+      scale: 100,
+      horizontalCentered: true,
+      margins: { left: 0.3, right: 0.3, top: 0.3, bottom: 0.3, header: 0, footer: 0 },
+    },
+  });
+  ws.columns = [9, 11, 13, 13, 9, 3, 13, 9, 22].map((width) => ({ width }));
+  const subjectPt = spareSubjectSizePt(r.subject);
+  const heights = { info: 34, subject: Math.round(subjectPt * 1.35), word: Math.round(SPARE_WORD_PT * 1.3) };
+  const pad = Math.max(10, 420 - 14 - heights.info - heights.subject - heights.word);
+
+  const line = (row: number, value: string, size: number) => {
+    ws.mergeCells(row, 1, row, 9);
+    const c = ws.getCell(row, 1);
+    c.value = value;
+    c.font = { name: SHEET_FONT, size, bold: true, color: { argb: argb(C.ink) } };
+    c.alignment = { horizontal: 'center', vertical: 'middle' };
+  };
+  ws.getRow(1).height = 14;
+  line(2, `[${r.grade}]  ${spareInfo(r)}`, 13);
+  ws.getRow(2).height = heights.info;
+  line(3, r.subject, subjectPt);
+  ws.getRow(3).height = heights.subject;
+  line(4, '여  분', SPARE_WORD_PT);
+  ws.getRow(4).height = heights.word;
+  ws.getRow(5).height = pad;
+  // 위쪽 절반을 학년 색 굵은 테두리로 두르고, 그 아래에 접는 선(점선)
+  const edge: Partial<ExcelJS.Border> = { style: 'thick', color: { argb: argb(t.accent) } };
+  for (let row = 2; row <= 5; row++) {
+    for (let col = 1; col <= 9; col++) {
+      ws.getCell(row, col).border = {
+        ...(row === 2 ? { top: edge } : {}),
+        ...(row === 5 ? { bottom: edge } : {}),
+        ...(col === 1 ? { left: edge } : {}),
+        ...(col === 9 ? { right: edge } : {}),
+      };
+    }
+  }
+  const fold: Partial<ExcelJS.Border> = { style: 'dashed', color: { argb: 'FF9AA5A0' } };
+  ws.getRow(6).height = 16;
+  for (let col = 1; col <= 9; col++) ws.getCell(6, col).border = { bottom: fold };
+  const tag = ws.getCell(7, 9);
+  tag.value = '접는 선';
+  tag.font = { name: SHEET_FONT, size: 8, color: { argb: 'FF6B7770' } };
+  tag.alignment = { horizontal: 'right', vertical: 'top' };
+  ws.pageSetup.printArea = 'A1:I7';
+}
+
+export interface ExportOptions {
+  /** 과목별 '여분' 표지 시트를 맨 뒤에 붙일지 */
+  withSpare?: boolean;
+}
+
+export async function buildSubjectWorkbook(r: SubjectRoster, opts: ExportOptions = {}): Promise<ArrayBuffer> {
   const wb = new ExcelJS.Workbook();
   wb.creator = '응시현황표 제작 도구';
   const used = new Set<string>();
   r.sheets.forEach((s) => addRoomSheet(wb, s, used));
+  if (opts.withSpare) addSpareSheet(wb, r, used);
   return (await wb.xlsx.writeBuffer()) as ArrayBuffer;
 }
 
 /** 과목이 하나면 xlsx, 여러 개면 zip */
-export async function exportRostersToFile(rosters: SubjectRoster[]): Promise<{ blob: Blob; fileName: string }> {
+export async function exportRostersToFile(rosters: SubjectRoster[], opts: ExportOptions = {}): Promise<{ blob: Blob; fileName: string }> {
   if (rosters.length === 1) {
-    const buf = await buildSubjectWorkbook(rosters[0]);
+    const buf = await buildSubjectWorkbook(rosters[0], opts);
     return {
       blob: new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
       fileName: subjectFileName(rosters[0]),
     };
   }
   const zip = new JSZip();
-  for (const r of rosters) zip.file(subjectFileName(r), await buildSubjectWorkbook(r));
+  for (const r of rosters) zip.file(subjectFileName(r), await buildSubjectWorkbook(r, opts));
   return { blob: await zip.generateAsync({ type: 'blob' }), fileName: `응시현황표_${rosters.length}과목.zip` };
 }
 

@@ -134,3 +134,38 @@
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
 #print-root { display: none; }
+
+/* ── 과목별 '여분' 표지: 위쪽 절반에만, 가운데 접는 선 ───────────────────── */
+.sp-page { padding: 0; display: block; }
+.sp-half {
+  box-sizing: border-box;
+  padding: 12mm 14mm 10mm;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4mm;
+  border: 1.2mm solid var(--accent);
+  border-radius: 4mm;
+  margin: 6mm 8mm 0;
+  height: 140mm; /* 6mm + 140mm + 접는 선 위 2mm = 148mm (A4 절반) */
+}
+.sp-info { display: flex; align-items: center; gap: 3mm; font-size: 13pt; font-weight: 700; }
+.sp-subject { font-weight: 800; line-height: 1.05; letter-spacing: -0.02em; white-space: nowrap; text-align: center; }
+.sp-word { font-size: 40mm; font-weight: 800; line-height: 1; letter-spacing: 0.3em; margin-right: -0.3em; }
+.sp-fold {
+  position: relative;
+  margin-top: 2mm;
+  border-top: 0.4mm dashed #9aa5a0;
+  height: 0;
+}
+.sp-fold span {
+  position: absolute;
+  right: 10mm;
+  top: -3.2mm;
+  padding: 0 2mm;
+  background: #fff;
+  font-size: 8pt;
+  font-weight: 600;
+  color: #6b7770;
+}

@@ -2,6 +2,7 @@
 import type { RoomSheet, SubjectRoster } from '../core';
 import { makeHakbeon, SEAT_ROWS, seatRowHeightMm, SUMMARY_NOTES, summarize } from '../core';
 import { gradeTheme, SHEET_COLORS } from './theme';
+import { SPARE_SHEET_NAME, SPARE_WORD_PT, spareInfo, spareSubjectSizePt } from './spare';
 import { subjectFileName } from './xlsx';
 
 type Req = Record<string, unknown>;
@@ -248,7 +249,46 @@ function summaryCells(sum: ReturnType<typeof summarize>, i: number): Cell[] {
   return [r.label, r.count === '' ? null : r.count, r.detail.replace(/\n/g, ', ') || null];
 }
 
-export function buildSpreadsheetRequests(r: SubjectRoster): Req[] {
+/** 과목별 '여분' 표지 시트 — 위쪽 절반에 과목명·여분을 크게, 아래 접는 선 */
+function spareRequests(sid: number, r: SubjectRoster): Req[] {
+  const t = gradeTheme(r.grade);
+  const pt2px = (pt: number) => Math.round(pt * 1.333);
+  const subjectPt = spareSubjectSizePt(r.subject);
+  const h = { info: pt2px(26), subject: pt2px(subjectPt * 1.35), word: pt2px(SPARE_WORD_PT * 1.3) };
+  const pad = Math.max(12, 560 - 18 - h.info - h.subject - h.word); // A4 절반 ≈ 560px
+  const reqs: Req[] = [{ addSheet: { properties: { sheetId: sid, title: SPARE_SHEET_NAME, gridProperties: { rowCount: 7, columnCount: 9 } } } }];
+  const values: Cell[][] = [[], [`[${r.grade}]  ${spareInfo(r)}`], [r.subject], ['여  분'], [], [], [null, null, null, null, null, null, null, null, '접는 선']];
+  reqs.push({ updateCells: { rows: values.map((row) => ({ values: row.map(toCell) })), fields: 'userEnteredValue', start: { sheetId: sid, rowIndex: 0, columnIndex: 0 } } });
+  const big = (row: number, fontSize: number): Req => ({
+    repeatCell: {
+      range: range(sid, row, 0, row + 1, 9),
+      cell: { userEnteredFormat: { horizontalAlignment: 'CENTER', verticalAlignment: 'MIDDLE', textFormat: { bold: true, fontSize, foregroundColor: rgb(C.ink) } } },
+      fields: 'userEnteredFormat(horizontalAlignment,verticalAlignment,textFormat)',
+    },
+  });
+  for (const [row, size] of [[1, 13], [2, subjectPt], [3, SPARE_WORD_PT]] as const) {
+    reqs.push({ mergeCells: { range: range(sid, row, 0, row + 1, 9), mergeType: 'MERGE_ALL' } }, big(row, size));
+  }
+  const thick = { style: 'SOLID_THICK', color: rgb(t.accent) };
+  reqs.push({ updateBorders: { range: range(sid, 1, 0, 5, 9), top: thick, bottom: thick, left: thick, right: thick } });
+  reqs.push({ updateBorders: { range: range(sid, 5, 0, 6, 9), bottom: { style: 'DASHED', color: rgb('9AA5A0') } } });
+  reqs.push({
+    repeatCell: {
+      range: range(sid, 6, 8, 7, 9),
+      cell: { userEnteredFormat: { horizontalAlignment: 'RIGHT', textFormat: { fontSize: 8, foregroundColor: rgb('6B7770') } } },
+      fields: 'userEnteredFormat(horizontalAlignment,textFormat)',
+    },
+  });
+  for (const [s, e, px] of [[0, 1, 18], [1, 2, h.info], [2, 3, h.subject], [3, 4, h.word], [4, 5, pad], [5, 6, 16]] as const) {
+    reqs.push({ updateDimensionProperties: { range: { sheetId: sid, dimension: 'ROWS', startIndex: s, endIndex: e }, properties: { pixelSize: px }, fields: 'pixelSize' } });
+  }
+  [70, 80, 110, 90, 70, 20, 100, 70, 160].forEach((px, c) => {
+    reqs.push({ updateDimensionProperties: { range: { sheetId: sid, dimension: 'COLUMNS', startIndex: c, endIndex: c + 1 }, properties: { pixelSize: px }, fields: 'pixelSize' } });
+  });
+  return reqs;
+}
+
+export function buildSpreadsheetRequests(r: SubjectRoster, opts: { withSpare?: boolean } = {}): Req[] {
   const all: Req[] = [];
   let nextId = 1000;
   r.sheets.forEach((s, i) => {
@@ -256,6 +296,7 @@ export function buildSpreadsheetRequests(r: SubjectRoster): Req[] {
     all.push(...requests);
     nextId += count;
   });
+  if (opts.withSpare) all.push(...spareRequests(nextId, r));
   return all;
 }
 
@@ -290,6 +331,7 @@ export async function exportToGoogleSheets(
   rosters: SubjectRoster[],
   target: GSheetsTarget,
   onProgress?: (done: number, total: number) => void,
+  opts: { withSpare?: boolean } = {},
 ): Promise<GSheetsResult> {
   let folderId = target.parentId;
   if (target.subfolderName) {
@@ -317,7 +359,7 @@ export async function exportToGoogleSheets(
     });
     await gapi(token, `https://sheets.googleapis.com/v4/spreadsheets/${file.id}:batchUpdate`, {
       method: 'POST',
-      body: JSON.stringify({ requests: buildSpreadsheetRequests(r) }),
+      body: JSON.stringify({ requests: buildSpreadsheetRequests(r, opts) }),
     });
     files.push({ name, url: `https://docs.google.com/spreadsheets/d/${file.id}/edit` });
     onProgress?.(i + 1, rosters.length);
