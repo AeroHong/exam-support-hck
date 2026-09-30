@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router';
-import { Alert, Box, Button, Chip, CircularProgress, Paper, Snackbar, Stack, Tab, Tabs, TextField, Typography } from '@mui/material';
+import { Alert, Box, Button, Chip, CircularProgress, InputBase, Paper, Snackbar, Stack, Tab, Tabs, Typography } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import type { AppUser } from '../firebase/auth';
 import { firebaseConfigured } from '../firebase/app';
@@ -145,17 +145,41 @@ export function ExamLayout({ user }: { user: AppUser }) {
     <Stack spacing={2}>
       {/* 스크롤해도 시험 이름·저장·탭이 보이도록 메뉴바 아래에 고정 */}
       <Paper variant="outlined" sx={{ position: 'sticky', top: 48, zIndex: 5, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} sx={{ alignItems: { md: 'center' }, px: 2, pt: 1.5 }}>
-          <Button size="small" startIcon={<ArrowBackIcon />} onClick={back} sx={{ flexShrink: 0 }}>
+        <Stack direction="row" spacing={1} sx={{ alignItems: 'center', px: 1.5, pt: 1 }}>
+          <Button size="small" color="inherit" startIcon={<ArrowBackIcon />} onClick={back} sx={{ flexShrink: 0, color: 'text.secondary' }}>
             목록
           </Button>
-          <TextField label="시험 이름" size="small" value={title} onChange={(e) => setTitle(e.target.value)} sx={{ minWidth: { md: 320 } }} />
-          <Typography variant="body2" color="text.secondary" noWrap>
-            {sourceFileName}
-          </Typography>
-          {version.versionCount > 0 && <Chip size="small" variant="outlined" label={`v${version.versionCount}`} title="지금 보고 있는 버전" />}
-          {dirty && <Chip size="small" color="warning" label="저장 안 된 변경 있음" />}
+          <Box sx={{ width: '1px', height: 20, bgcolor: 'divider', flexShrink: 0 }} />
+          {/* 시험 이름: 평소엔 제목처럼 보이고, 클릭하면 바로 고칠 수 있다 */}
+          <InputBase
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            inputProps={{ 'aria-label': '시험 이름', title: '클릭해서 시험 이름 고치기' }}
+            sx={{
+              flex: '0 1 auto',
+              minWidth: 120,
+              width: `${Math.max(8, [...title].length * 1.15 + 1.5)}em`,
+              maxWidth: 420,
+              fontSize: '1.15rem',
+              fontWeight: 800,
+              letterSpacing: '-0.01em',
+              px: 1,
+              borderRadius: 1.5,
+              border: '1px solid transparent',
+              '&:hover': { bgcolor: 'action.hover' },
+              '&.Mui-focused': { bgcolor: '#fff', borderColor: 'primary.main' },
+            }}
+          />
+          <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', minWidth: 0, display: { xs: 'none', sm: 'flex' } }}>
+            {version.versionCount > 0 && (
+              <Chip size="small" label={`v${version.versionCount}`} title="지금 보고 있는 버전" sx={{ height: 20, fontSize: 11, fontWeight: 700 }} />
+            )}
+            <Typography variant="caption" color="text.secondary" noWrap title={sourceFileName}>
+              {sourceFileName}
+            </Typography>
+          </Stack>
           <Box sx={{ flex: 1 }} />
+          {dirty && <Chip size="small" color="warning" label="저장 안 된 변경" sx={{ flexShrink: 0 }} />}
           {firebaseConfigured && <SaveButton userEmail={user.email} />}
         </Stack>
         {remote && (
@@ -177,7 +201,7 @@ export function ExamLayout({ user }: { user: AppUser }) {
             저장합니다(같은 칸을 서로 다르게 고친 곳만 확인 요청).
           </Alert>
         )}
-        <Tabs value={tab} sx={{ px: 1, minHeight: 40, '& .MuiTab-root': { minHeight: 40, fontWeight: 600 } }}>
+        <Tabs value={tab} sx={{ px: 1, minHeight: 38, '& .MuiTab-root': { minHeight: 38, py: 0, px: 1.5, fontWeight: 700, fontSize: 14 } }}>
           {TABS.map((t) => (
             <Tab key={t.path} value={t.path} label={t.label} component={NavLink} to={`/exams/${examId}/${t.path}`} />
           ))}

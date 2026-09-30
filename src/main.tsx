@@ -8,6 +8,11 @@ const theme = createTheme({
   palette: { primary: { main: '#2e7d32' }, background: { default: '#f5f6f8' } },
   typography: { fontFamily: "'Pretendard', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif" },
   shape: { borderRadius: 8 },
+  components: {
+    MuiButton: { styleOverrides: { root: { textTransform: 'none', whiteSpace: 'nowrap', fontWeight: 600 } } },
+    MuiToggleButton: { styleOverrides: { root: { textTransform: 'none', whiteSpace: 'nowrap' } } },
+    MuiTab: { styleOverrides: { root: { textTransform: 'none' } } },
+  },
 });
 
 createRoot(document.getElementById('root')!).render(

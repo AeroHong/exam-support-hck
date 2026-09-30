@@ -14,6 +14,11 @@ export function printItemsOf(rosters: SubjectRoster[], withSpare: boolean): Prin
   ]);
 }
 
+/** 화면·기록용 이름: '공통영어2 / 1-1' 또는 '공통영어2 / 여분 표지' */
+export function printItemLabel(item: PrintItem): string {
+  return item.kind === 'room' ? `${item.sheet.subject} / ${item.sheet.roomName}` : `${item.roster.subject} / 여분 표지`;
+}
+
 export function PrintItemView({ item }: { item: PrintItem }) {
   return item.kind === 'room' ? <RoomSheetView sheet={item.sheet} /> : <SpareSheetView roster={item.roster} />;
 }

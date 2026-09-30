@@ -32,7 +32,7 @@ import { logActivity, type ActionType } from '../firebase/activity';
 import { IssuesPanel } from '../components/IssuesPanel';
 import { useOpenIssue } from '../components/useOpenIssue';
 import { SheetPreview } from '../components/SheetPreview';
-import { PrintRoot, printItemsOf, type PrintItem } from '../export/print/PrintRoot';
+import { PrintRoot, printItemLabel, printItemsOf, type PrintItem } from '../export/print/PrintRoot';
 import type { GSheetsResult, GSheetsTarget } from '../export/gsheets';
 import { GSheetsDialog } from '../components/GSheetsDialog';
 
@@ -146,6 +146,19 @@ export function WorkPage(_: { user: AppUser }) {
     record('print');
   };
 
+  /** 미리보기 중인 한 장만 인쇄 */
+  const onPrintOne = (item: PrintItem) => {
+    setPrinting([item]);
+    const r = item.kind === 'room' ? rosters.find((x) => x.sheets.some((s) => s.key === item.key)) : item.roster;
+    logActivity({
+      action: 'print',
+      examId,
+      examTitle: title,
+      summary: `1장 인쇄 · ${printItemLabel(item)}`,
+      details: r ? [`${r.dateStr} ${r.period}교시 ${r.grade} ${printItemLabel(item)}`] : [],
+    });
+  };
+
   /** 한시 기능: 선택한 과목의 '여분' 표지만 인쇄 */
   const onPrintSpareOnly = () => {
     setPrinting(printItemsOf(selected, true).filter((it) => it.kind === 'spare'));
@@ -188,7 +201,8 @@ export function WorkPage(_: { user: AppUser }) {
       <IssuesPanel issues={issues} storeKey={examId} onOpen={openIssue} />
 
       <Paper variant="outlined" sx={{ p: 2 }}>
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ alignItems: { md: 'center' } }}>
+        {/* 윗줄: 범위 고르기 */}
+        <Stack direction="row" spacing={1.5} useFlexGap sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 1 }}>
           <ToggleButtonGroup
             size="small"
             exclusive
@@ -200,9 +214,30 @@ export function WorkPage(_: { user: AppUser }) {
               setValue('');
               setExcluded(new Set());
             }}
+            sx={{
+              bgcolor: '#eef1ef',
+              p: 0.5,
+              borderRadius: 999,
+              gap: 0.5,
+              '& .MuiToggleButton-root': {
+                border: 0,
+                borderRadius: '999px !important',
+                m: '0 !important',
+                px: 1.75,
+                py: 0.5,
+                fontWeight: 600,
+                color: 'text.secondary',
+              },
+              '& .MuiToggleButton-root.Mui-selected': {
+                bgcolor: '#fff',
+                color: 'primary.main',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.14)',
+                '&:hover': { bgcolor: '#fff' },
+              },
+            }}
           >
             {MODES.map((m) => (
-              <ToggleButton key={m.value} value={m.value} sx={{ px: 2 }}>
+              <ToggleButton key={m.value} value={m.value}>
                 {m.label}
               </ToggleButton>
             ))}
@@ -226,20 +261,29 @@ export function WorkPage(_: { user: AppUser }) {
               ))}
             </TextField>
           )}
-          <Box sx={{ flex: 1 }} />
+        </Stack>
+        {/* 아랫줄: 출력 */}
+        <Stack
+          direction="row"
+          spacing={1}
+          useFlexGap
+          sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 1, mt: 1.5, pt: 1.5, borderTop: 1, borderColor: 'divider' }}
+        >
           <FormControlLabel
             control={<Checkbox size="small" checked={withSpare} onChange={(e) => setWithSpare(e.target.checked)} />}
             label={<Typography variant="body2">과목별 '여분' 표지</Typography>}
             title="과목마다 A4 절반(접어서 봉투에 넣는) 크기의 '과목명 · 여분' 표지를 현황표 뒤에 붙입니다"
-            sx={{ mr: 0 }}
+            sx={{ mr: 0.5 }}
           />
-          <Typography variant="body2" color="text.secondary">
-            선택 {selected.length}과목 · {items.length}장
+          <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
+            선택 <b>{selected.length}</b>과목 · <b>{items.length}</b>장
           </Typography>
-          <Button variant="contained" startIcon={<PrintIcon />} disabled={!items.length} onClick={onPrint}>
+          <Box sx={{ flex: 1 }} />
+          <Button size="small" variant="contained" startIcon={<PrintIcon />} disabled={!items.length} onClick={onPrint}>
             인쇄 / PDF
           </Button>
           <Button
+            size="small"
             variant="outlined"
             startIcon={<PrintIcon />}
             disabled={!selected.length}
@@ -249,11 +293,11 @@ export function WorkPage(_: { user: AppUser }) {
           >
             여분만 인쇄
           </Button>
-          <Button variant="outlined" startIcon={<GridOnIcon />} disabled={!selected.length} onClick={onXlsx}>
+          <Button size="small" variant="outlined" startIcon={<GridOnIcon />} disabled={!selected.length} onClick={onXlsx}>
             XLSX
           </Button>
           {firebaseConfigured && (
-            <Button variant="outlined" startIcon={<CloudUploadIcon />} disabled={!selected.length} onClick={() => setGsOpen(true)}>
+            <Button size="small" variant="outlined" startIcon={<CloudUploadIcon />} disabled={!selected.length} onClick={() => setGsOpen(true)}>
               Google 시트
             </Button>
           )}
@@ -348,7 +392,7 @@ export function WorkPage(_: { user: AppUser }) {
           )}
         </Paper>
 
-        <SheetPreview item={preview} />
+        <SheetPreview item={preview} onPrint={onPrintOne} />
       </Stack>
 
       {printing && <PrintRoot items={printing} />}
